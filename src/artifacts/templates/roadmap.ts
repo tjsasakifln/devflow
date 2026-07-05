@@ -1,0 +1,40 @@
+import type { TemplatePayload } from "../../types/artifacts.js";
+
+export function roadmapTemplate(payload: TemplatePayload): string {
+  const { featureName, timestamp } = payload;
+  return [
+    `# Architectural Roadmap: ${featureName}`,
+    "",
+    "## Implementation Order",
+    "1. <!-- Step 1: description, files affected, risks -->",
+    "2. <!-- Step 2: description, files affected, risks -->",
+    "3. <!-- Step 3: description, files affected, risks -->",
+    "",
+    "## Architecture Decisions",
+    "### Decision 1: <!-- title -->",
+    "- **Context**: <!-- why this decision was needed -->",
+    "- **Decision**: <!-- what was chosen -->",
+    "- **Rationale**: <!-- why this approach -->",
+    "- **Alternatives Considered**: <!-- other options and why rejected -->",
+    "",
+    "## Files to Create",
+    "| File | Purpose |",
+    "|------|---------|",
+    "| `path/to/new/file.ts` | <!-- purpose --> |",
+    "",
+    "## Files to Modify",
+    "| File | Changes | Risk |",
+    "|------|---------|------|",
+    "| `path/to/existing/file.ts` | <!-- changes needed --> | low | medium | high |",
+    "",
+    "## Risk Assessment",
+    "| Risk | Mitigation |",
+    "|------|------------|",
+    "| <!-- description --> | <!-- how to address --> |",
+    "",
+    "---",
+    "",
+    `*Planned: ${timestamp}*`,
+    "",
+  ].join("\n");
+}
