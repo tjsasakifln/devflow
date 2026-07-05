@@ -31,6 +31,9 @@ export async function detectState(
   };
 }
 
+// ORDER MATTERS: branches ordered most-specific → most-generic.
+// Reordering will break state detection silently — no crash, wrong state.
+// Each branch is checked in priority order; first match wins.
 async function determineState(
   inspection: ProjectInspection
 ): Promise<DevflowState> {
@@ -109,7 +112,10 @@ async function determineState(
     : "greenfield-idea";
 }
 
-function determineFeatureState(f: FeatureInfo): DevflowState {
+// ORDER MATTERS: branches ordered most-specific → most-generic.
+// Reordering will break feature state detection silently.
+// Each branch is checked in priority order; first match wins.
+export function determineFeatureState(f: FeatureInfo): DevflowState {
   // Feature done
   if (
     f.hasQaReport &&

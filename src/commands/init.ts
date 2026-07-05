@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs/promises";
 import { ArtifactManager } from "../artifacts/manager.js";
 import { ConfigManager } from "../config/index.js";
 import { inspectProject } from "../project/inspector.js";
@@ -9,8 +10,30 @@ import { ensureClaudeMdSection } from "../integration/claude-code.js";
 import { fileExists } from "../utils/fs.js";
 import pc from "picocolors";
 
+// Paths created during init — used for rollback on failure
+interface InitPlan {
+  dotDevflowDir: string;
+  devArtifactsDir: string;
+  devflowMdPath: string;
+  claudeMdPath: string;
+  settingsPath: string;
+  claudeDir: string;
+}
+
+function planPaths(rootPath: string): InitPlan {
+  return {
+    dotDevflowDir: path.join(rootPath, ".devflow"),
+    devArtifactsDir: path.join(rootPath, "_devflow"),
+    devflowMdPath: path.join(rootPath, "DEVFLOW.md"),
+    claudeMdPath: path.join(rootPath, "CLAUDE.md"),
+    settingsPath: path.join(rootPath, ".claude", "settings.json"),
+    claudeDir: path.join(rootPath, ".claude"),
+  };
+}
+
 export async function initCommand(cwd: string): Promise<void> {
   const rootPath = path.resolve(cwd);
+  const planned = planPaths(rootPath);
 
   console.log(pc.bold("\nDevflow Init\n"));
   console.log(`Initializing Devflow in: ${pc.dim(rootPath)}\n`);
@@ -24,78 +47,191 @@ export async function initCommand(cwd: string): Promise<void> {
     return;
   }
 
-  // Step 1: Scaffold directories
-  console.log(pc.blue("→") + " Creating directory structure...");
-  const manager = new ArtifactManager(rootPath);
-  await manager.scaffoldAll();
+  // ── Pre-validation: verify all conditions before touching filesystem ──
+  console.log(pc.blue("→") + " Pre-validating...");
 
-  // Step 2: Inspect project
-  console.log(pc.blue("→") + " Inspecting project...");
-  const inspection = await inspectProject(rootPath);
+  let inspection;
+  try {
+    inspection = await inspectProject(rootPath);
+  } catch (err) {
+    console.error(
+      pc.red("✖ Failed to inspect project: ") +
+        (err instanceof Error ? err.message : String(err))
+    );
+    console.error("  Verify the directory exists and is readable.");
+    process.exit(1);
+  }
 
-  // Step 3: Initialize config
-  console.log(pc.blue("→") + " Writing configuration...");
+  // Validate config generation (in-memory)
   const configMgr = new ConfigManager(rootPath);
-  const config = configMgr.getDefaults();
-  config.projectName = path.basename(rootPath);
-  config.createdTimestamp = new Date().toISOString();
-  await configMgr.save(config);
+  let config;
+  try {
+    config = configMgr.getDefaults();
+    config.projectName = path.basename(rootPath);
+    config.createdTimestamp = new Date().toISOString();
+    JSON.stringify(config); // verify serializable
+  } catch (err) {
+    console.error(
+      pc.red("✖ Failed to generate configuration: ") +
+        (err instanceof Error ? err.message : String(err))
+    );
+    process.exit(1);
+  }
 
-  // Step 4: Detect state and write state.json
-  console.log(pc.blue("→") + " Detecting project state...");
-  const stateResult = await detectState(inspection);
+  // Validate state detection (in-memory)
+  let stateResult;
+  try {
+    stateResult = await detectState(inspection);
+  } catch (err) {
+    console.error(
+      pc.red("✖ Failed to detect project state: ") +
+        (err instanceof Error ? err.message : String(err))
+    );
+    process.exit(1);
+  }
 
-  await manager.writeState({
-    currentState: stateResult.currentState,
-    previousState: null,
-    confidence: stateResult.confidence,
-    lastUpdated: new Date().toISOString(),
-    activeFeatureId: null,
-    blockers: stateResult.blockers,
-  });
+  // Validate cockpit generation (in-memory)
+  try {
+    const recommendation = computeRecommendation(stateResult, inspection);
+    generateCockpit(stateResult, recommendation, inspection);
+  } catch (err) {
+    console.error(
+      pc.red("✖ Failed to generate cockpit: ") +
+        (err instanceof Error ? err.message : String(err))
+    );
+    process.exit(1);
+  }
 
-  // Step 5: Generate DEVFLOW.md cockpit
-  console.log(pc.blue("→") + " Generating DEVFLOW.md cockpit...");
-  const recommendation = computeRecommendation(stateResult, inspection);
-  const cockpitContent = generateCockpit(
-    stateResult,
-    recommendation,
-    inspection
-  );
-  await manager.safeWrite(
-    path.join(rootPath, "DEVFLOW.md"),
-    cockpitContent,
-    "DEVFLOW.md"
-  );
+  // Validate slash command config (in-memory)
+  try {
+    const { generateSlashCommandConfig } = await import(
+      "../integration/claude-code.js"
+    );
+    JSON.parse(generateSlashCommandConfig()); // verify valid JSON
+  } catch (err) {
+    console.error(
+      pc.red("✖ Failed to generate slash command config: ") +
+        (err instanceof Error ? err.message : String(err))
+    );
+    process.exit(1);
+  }
 
-  // Step 6: Integrate with CLAUDE.md
-  console.log(pc.blue("→") + " Integrating with CLAUDE.md...");
-  await ensureClaudeMdSection(rootPath);
+  console.log(pc.green("  ✓") + " All pre-checks passed\n");
 
-  // Step 7: Generate .claude/settings.json slash command config
-  console.log(pc.blue("→") + " Configuring /devflow slash command...");
-  const claudeDir = path.join(rootPath, ".claude");
-  const { ensureDir } = await import("../utils/fs.js");
-  await ensureDir(claudeDir);
-  const { generateSlashCommandConfig } = await import(
-    "../integration/claude-code.js"
-  );
+  // ── Execution phase with rollback ──
+  const createdPaths: string[] = [];
+  let claudeMdExistedBefore = false;
 
-  const settingsPath = path.join(claudeDir, "settings.json");
-  const settingsContent = generateSlashCommandConfig();
-  await manager.safeWrite(settingsPath, settingsContent, ".claude/settings.json");
+  try {
+    // Step 1: Scaffold directories
+    console.log(pc.blue("→") + " Creating directory structure...");
+    const manager = new ArtifactManager(rootPath);
+    await manager.scaffoldAll();
+    createdPaths.push(planned.dotDevflowDir);
+    createdPaths.push(planned.devArtifactsDir);
 
-  // Summary
-  console.log(pc.green("\n✅ Devflow initialized successfully!\n"));
-  console.log(pc.bold("Created:"));
-  console.log("  .devflow/          — Internal state");
-  console.log("  _devflow/          — Output artifacts");
-  console.log("  DEVFLOW.md         — Project cockpit");
-  console.log("  CLAUDE.md          — Devflow integration (appended)");
-  console.log("  .claude/settings.json — /devflow slash command");
-  console.log();
-  console.log(pc.bold("Detected state: ") + pc.cyan(stateResult.currentState));
-  console.log(pc.bold("Confidence:     ") + stateResult.confidence);
-  console.log();
-  console.log("Next: run " + pc.bold("devflow next") + " to see the recommended action.\n");
+    // Step 2: Inspect project (already done in pre-validation, reuse)
+    console.log(pc.blue("→") + " Inspecting project...");
+
+    // Step 3: Initialize config
+    console.log(pc.blue("→") + " Writing configuration...");
+    await configMgr.save(config);
+
+    // Step 4: Detect state and write state.json
+    console.log(pc.blue("→") + " Detecting project state...");
+
+    await manager.writeState({
+      currentState: stateResult.currentState,
+      previousState: null,
+      confidence: stateResult.confidence,
+      lastUpdated: new Date().toISOString(),
+      activeFeatureId: null,
+      blockers: stateResult.blockers,
+    });
+
+    // Step 5: Generate DEVFLOW.md cockpit
+    console.log(pc.blue("→") + " Generating DEVFLOW.md cockpit...");
+    const recommendation = computeRecommendation(stateResult, inspection);
+    const cockpitContent = generateCockpit(
+      stateResult,
+      recommendation,
+      inspection
+    );
+    await manager.safeWrite(
+      planned.devflowMdPath,
+      cockpitContent,
+      "DEVFLOW.md"
+    );
+    createdPaths.push(planned.devflowMdPath);
+
+    // Step 6: Integrate with CLAUDE.md
+    console.log(pc.blue("→") + " Integrating with CLAUDE.md...");
+    claudeMdExistedBefore = await fileExists(planned.claudeMdPath);
+    await ensureClaudeMdSection(rootPath);
+    if (!claudeMdExistedBefore) {
+      createdPaths.push(planned.claudeMdPath);
+    }
+
+    // Step 7: Generate .claude/settings.json slash command config
+    console.log(pc.blue("→") + " Configuring /devflow slash command...");
+    const { ensureDir } = await import("../utils/fs.js");
+    await ensureDir(planned.claudeDir);
+    createdPaths.push(planned.claudeDir);
+
+    const { generateSlashCommandConfig } = await import(
+      "../integration/claude-code.js"
+    );
+    const settingsContent = generateSlashCommandConfig();
+    await manager.safeWrite(
+      planned.settingsPath,
+      settingsContent,
+      ".claude/settings.json"
+    );
+    createdPaths.push(planned.settingsPath);
+
+    // Summary
+    console.log(pc.green("\n✅ Devflow initialized successfully!\n"));
+    console.log(pc.bold("Created:"));
+    console.log("  .devflow/          — Internal state");
+    console.log("  _devflow/          — Output artifacts");
+    console.log("  DEVFLOW.md         — Project cockpit");
+    console.log("  CLAUDE.md          — Devflow integration (appended)");
+    console.log("  .claude/settings.json — /devflow slash command");
+    console.log();
+    console.log(pc.bold("Detected state: ") + pc.cyan(stateResult.currentState));
+    console.log(pc.bold("Confidence:     ") + stateResult.confidence);
+    console.log();
+    console.log("Next: run " + pc.bold("devflow next") + " to see the recommended action.\n");
+  } catch (err) {
+    // ── Rollback: remove created paths in reverse order ──
+    console.error(
+      pc.red("\n✖ Init failed: ") +
+        (err instanceof Error ? err.message : String(err))
+    );
+    console.log(pc.yellow("  Rolling back changes..."));
+
+    for (const p of createdPaths.reverse()) {
+      try {
+        await fs.rm(p, { recursive: true, force: true });
+        console.log(pc.dim(`    Removed: ${path.relative(rootPath, p)}`));
+      } catch (rollbackErr) {
+        console.log(
+          pc.yellow(
+            `    Could not remove: ${path.relative(rootPath, p)} (manual cleanup may be needed)`
+          )
+        );
+      }
+    }
+
+    if (claudeMdExistedBefore) {
+      console.log(
+        pc.dim(
+          `    CLAUDE.md was appended — original content preserved (verify manually)`
+        )
+      );
+    }
+
+    console.log();
+    process.exit(1);
+  }
 }
