@@ -1,0 +1,27 @@
+# Source (distributed as compiled dist/ only)
+src/
+test/
+
+# Build & dev config
+tsconfig.json
+tsconfig.build.json
+vitest.config.ts
+.gitignore
+.npmignore
+.npmrc
+
+# Reversa internal
+.reversa/
+_reversa_sdd/
+_reversa_docs/
+_reversa_forward/
+
+# AI config
+CLAUDE.md
+.claude/
+.agents/
+
+# Misc
+.github/
+.editorconfig
+node_modules/

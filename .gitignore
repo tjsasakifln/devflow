@@ -6,6 +6,13 @@ dist/
 .tmp/
 *.tmp
 
-# Reversa
-.reversa/config.user.toml
+# Reversa (reverse engineering artifacts — local only)
+.reversa/
 _reversa_sdd/
+_reversa_docs/
+_reversa_forward/
+
+# AI agent configuration (local only)
+CLAUDE.md
+.claude/
+.agents/
