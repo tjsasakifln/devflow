@@ -16,3 +16,4 @@ _reversa_forward/
 CLAUDE.md
 .claude/
 .agents/
+.playwright-mcp/
