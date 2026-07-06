@@ -38,6 +38,17 @@ export async function gatekeep(
   }
 
   const gatekeeper = options.actor || process.env.DEVFLOW_ACTOR || process.env.USER || "unknown";
+  const actorOrigin: "cli" | "claude-code" | "ci" | "inferred" = options.actor || process.env.DEVFLOW_ACTOR
+    ? "cli"
+    : "inferred";
+
+  // ── Capture git context for audit trail ──
+  let commitSha = "unknown";
+  let gitBranch = "unknown";
+  try {
+    commitSha = execSync("git rev-parse HEAD", { cwd: rootPath, encoding: "utf-8" }).trim();
+    gitBranch = execSync("git branch --show-current", { cwd: rootPath, encoding: "utf-8" }).trim();
+  } catch { /* git not available */ }
 
   // ── Enforce implementer ≠ approver ──
   if (gatekeeper === implementerActor && implementerActor !== "unknown") {
@@ -50,14 +61,78 @@ export async function gatekeep(
     return;
   }
 
+  // ── Block unknown-unknown pairs in strict/release mode ──
+  const { ConfigManager } = await import("../config/index.js");
+  const configMgr = new ConfigManager(rootPath);
+  const config = await configMgr.load();
+  const mode = config.executionMode || "local";
+
+  if (gatekeeper === "unknown" && implementerActor === "unknown") {
+    if (mode === "strict" || mode === "release") {
+      console.log(pc.red("⛔ Gatekeep Refused — Actor Identity Not Verifiable\n"));
+      console.log(pc.red("   Both implementer and gatekeeper are 'unknown'."));
+      console.log(pc.red(`   Mode '${mode}' requires explicit actor identity.`));
+      console.log(pc.yellow("   Set DEVFLOW_ACTOR env var or use --actor flag.\n"));
+      return;
+    }
+    console.log(pc.yellow("⚠️  Warning: Both implementer and gatekeeper are 'unknown'."));
+    console.log(pc.yellow("   Actor segregation cannot be verified in this state.\n"));
+  }
+
+  // ── Require explicit decision ──
+  if (!options.approve && !options.reject) {
+    console.log(pc.yellow("\nNo decision flag provided.\n"));
+    console.log(pc.dim("  Pass --approve to approve the feature."));
+    console.log(pc.dim("  Pass --reject to reject the feature."));
+    console.log(pc.dim("  Devflow never assumes approval. Decisions must be explicit.\n"));
+    console.log(pc.bold("Run with --approve or --reject to proceed."));
+    return;
+  }
+
   // ── Run DoD checks ──
   console.log(pc.bold("Running Definition of Done checks...\n"));
 
   const dodResult = await runFeatureCompleteInternal(featureId, rootPath);
 
+  // ── Block approval if blocking checks failed ──
+  if (options.approve && !dodResult.allBlockingPassed) {
+    console.log(pc.red("\n⛔ BLOCKING CHECKS FAILED — Approval Refused\n"));
+    console.log(pc.red(`   ${dodResult.blockingFailed.length} blocking check(s) must pass before approval:\n`));
+    for (const bf of dodResult.blockingFailed) {
+      console.log(pc.red(`   [${bf.id}] ${bf.description}`));
+      console.log(pc.yellow(`   → ${bf.remediation}\n`));
+    }
+    console.log(pc.yellow("Fix blocking checks and re-run `devflow feature complete` before attempting approval."));
+    console.log(pc.yellow("Alternatively, use --reject to return feature to correction state.\n"));
+
+    // Log refusal attempt
+    const auditDir = path.join(rootPath, ".devflow", "audits");
+    try { execSync(`mkdir -p "${auditDir}"`, { encoding: "utf-8" }); } catch { /* ok */ }
+    const refusalEntry = {
+      timestamp: new Date().toISOString(),
+      gatekeeper,
+      implementer: implementerActor,
+      featureId,
+      decision: "refused",
+      reason: `Approval blocked: ${dodResult.blockingFailed.length} blocking checks failed — ${dodResult.blockingFailed.map(b => b.id).join(", ")}`,
+      dodChecksPassed: dodResult.passed,
+      dodChecksTotal: dodResult.total,
+      allBlockingPassed: dodResult.allBlockingPassed,
+      actorOrigin,
+      commitSha,
+      branch: gitBranch,
+      devflowVersion: "0.1.0",
+      executionMode: mode,
+    };
+    const gatekeepLogPath = path.join(auditDir, "gatekeep-log.jsonl");
+    const existing = await safeReadFile(gatekeepLogPath);
+    await atomicWrite(gatekeepLogPath, (existing || "") + JSON.stringify(refusalEntry) + "\n");
+    return;
+  }
+
   const verdict = options.reject ? "rejected" : "approved";
   const reason = options.reason || (verdict === "approved"
-    ? "All DoD checks passed. Gatekeeper confirms feature meets engineering standards."
+    ? "All blocking checks passed. Gatekeeper confirms feature meets engineering standards."
     : "Gatekeeper rejected — issues found.");
 
   // ── Record gatekeep entry ──
@@ -76,6 +151,12 @@ export async function gatekeep(
     dodChecksPassed: dodResult.passed,
     dodChecksTotal: dodResult.total,
     ciStatus: dodResult.ciStatus || "not-checked",
+    actorOrigin,
+    commitSha,
+    branch: gitBranch,
+    devflowVersion: "0.1.0",
+    executionMode: mode,
+    allBlockingPassed: dodResult.allBlockingPassed,
   };
 
   const gatekeepLogPath = path.join(auditDir, "gatekeep-log.jsonl");
@@ -91,8 +172,8 @@ export async function gatekeep(
       try {
         const state = JSON.parse(stateRaw);
         if (verdict === "approved") {
+          state.previousState = state.currentState;  // Save before overwriting
           state.currentState = "feature-done";
-          state.previousState = state.currentState;
           state.confidence = "high";
           state.lastUpdated = new Date().toISOString();
         }
@@ -108,12 +189,23 @@ export async function gatekeep(
     console.log(pc.green(`   Implementer: ${implementerActor}`));
     console.log(pc.green(`   Checks: ${dodResult.passed}/${dodResult.total} passed\n`));
     console.log(pc.dim(`   Recorded in ${gatekeepLogPath}`));
-    console.log(pc.bold(`   Feature is ready for merge. Run: git checkout main && git merge feature/${featureId}`));
+    console.log(pc.dim("   This approval is auditable evidence of process, not a guarantee of correctness.\n"));
+    console.log(pc.bold("Next Steps:"));
+    console.log(pc.dim("  1. git push origin feature/" + featureId));
+    console.log(pc.dim("  2. Create Pull Request on GitHub"));
+    console.log(pc.dim("  3. Wait for CI checks on the PR"));
+    console.log(pc.dim("  4. Get human code review before merging"));
+    console.log(pc.dim("  5. Merge when all reviews pass"));
   } else {
     console.log(pc.red(`\n❌ Gatekeep Rejected — ${featureId}\n`));
     console.log(pc.red(`   Gatekeeper: ${gatekeeper}`));
     console.log(pc.red(`   Reason: ${reason}`));
-    console.log(pc.yellow(`   Feature moved back to coding-in-progress for fixes.\n`));
+    console.log(pc.yellow(`   Feature returned to correction state.\n`));
+    console.log(pc.bold("Next Steps:"));
+    console.log(pc.dim("  1. Review the rejection reason above"));
+    console.log(pc.dim("  2. Fix issues in feature/" + featureId));
+    console.log(pc.dim("  3. Run `devflow feature complete " + featureId + "` to re-verify"));
+    console.log(pc.dim("  4. Run `devflow gatekeep " + featureId + " --approve --actor <reviewer>` when ready"));
   }
 
   console.log();
@@ -123,8 +215,7 @@ export async function gatekeep(
 async function runFeatureCompleteInternal(
   featureId: string,
   rootPath: string
-): Promise<{ passed: number; total: number; ciStatus: string }> {
-  // Import dynamically to avoid circular dependency
+): Promise<import("./feature-complete.js").DoDResult> {
   const { featureCompleteInternal } = await import("./feature-complete.js");
   return featureCompleteInternal(featureId, rootPath);
 }

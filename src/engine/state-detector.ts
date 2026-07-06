@@ -212,16 +212,6 @@ export function determineFeatureState(f: FeatureInfo): DevflowState {
     return "feature-design";
   }
 
-  // Feature requirements reviewed
-  if (
-    f.hasRequirements &&
-    f.hasQualityAudit &&
-    !f.requirementsDoubts &&
-    !f.hasRoadmap
-  ) {
-    return "feature-requirements-reviewed";
-  }
-
   // Feature todo (actions exist but not all done) — legacy state
   if (
     f.hasActions &&
@@ -239,16 +229,6 @@ export function determineFeatureState(f: FeatureInfo): DevflowState {
   // Feature planning (roadmap exists, no actions) — legacy state
   if (f.hasRoadmap && !f.hasActions) {
     return "feature-planning";
-  }
-
-  // Feature requirements audited — legacy state
-  if (
-    f.hasRequirements &&
-    f.hasQualityAudit &&
-    !f.requirementsDoubts &&
-    !f.hasRoadmap
-  ) {
-    return "feature-requirements-audited";
   }
 
   // Feature clarification needed

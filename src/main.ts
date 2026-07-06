@@ -9,10 +9,11 @@ const program = new Command();
 program
   .name("devflow")
   .description(
-    "State-aware workflow operating system for AI-assisted software development"
+    "fool-resistant, evidence-driven, engineered-by-default: state-aware workflow harness for AI-assisted software development"
   )
   .version("0.1.0")
   .option("--cwd <path>", "Working directory", process.cwd())
+  .option("--mode <mode>", "Execution mode: local, experimental, strict, release", "local")
   .option("--verbose", "Verbose output")
   .option("--no-color", "Disable color output")
   .addHelpCommand("help [command]", "Show help for a command");

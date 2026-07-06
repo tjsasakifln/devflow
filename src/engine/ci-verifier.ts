@@ -1,6 +1,24 @@
 import { execSync } from "node:child_process";
 import type { CIStatus } from "../types/state.js";
-import type { DevflowConfig } from "../types/artifacts.js";
+import type { DevflowConfig, ExecutionMode } from "../types/artifacts.js";
+
+/**
+ * Check if CI verification is required (blocking) for the given execution mode.
+ * In strict and release modes, CI must be green — no exceptions.
+ * In local and experimental, CI is advisory.
+ */
+export function isCIRequired(mode: ExecutionMode): boolean {
+  return mode === "strict" || mode === "release";
+}
+
+/**
+ * Check if CI unavailability should block the feature.
+ * CI unavailable = gh CLI missing, workflow not found, integration error.
+ * In strict/release: blocks. In local/experimental: advisory.
+ */
+export function isCIUnavailableBlocking(mode: ExecutionMode): boolean {
+  return mode === "strict" || mode === "release";
+}
 
 /**
  * Verify CI status using gh CLI (primary) or GitHub API (fallback).

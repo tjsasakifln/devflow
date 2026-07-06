@@ -19,6 +19,7 @@ export interface SemanticWarning {
 
 // Phrases that indicate generic/template filler content
 const GENERIC_PHRASES = [
+  // Portuguese boilerplate
   "usar boas práticas",
   "implementar feature",
   "implementar a feature",
@@ -37,6 +38,24 @@ const GENERIC_PHRASES = [
   "criar arquitetura",
   "implementar solução",
   "codificar solução",
+  "seguindo as melhores práticas",
+  "de acordo com os requisitos",
+  "implementação robusta e escalável",
+  "código limpo e bem documentado",
+  "garantir qualidade",
+  "seguir os princípios",
+  "aplicar padrões",
+  // English boilerplate
+  "follows best practices",
+  "robust and scalable",
+  "leverages existing patterns",
+  "follows industry standards",
+  "clean and maintainable",
+  "well-documented code",
+  "comprehensive test coverage",
+  "production-ready",
+  "state-of-the-art",
+  "cutting-edge",
 ];
 
 const MIN_WORDS_PER_SECTION = 20;

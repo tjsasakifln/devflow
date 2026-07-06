@@ -34,22 +34,31 @@ O Reversa escreve apenas em `.reversa/`, `_reversa_sdd/`, `_reversa_docs/` e `_r
 >
 > O Devflow não elimina julgamento humano. Mas reduz drasticamente a superfície de erro,
 > eleva o custo de pular engenharia e produz evidência suficiente para revisão séria.
+>
+> Devflow nunca aprova implicitamente. Aprovação exige `--approve` explícito,
+> todos os checks bloqueantes passando, CI verde (em modo strict/release),
+> e ator diferente do implementador (Constitution C12).
 
 ## Comandos Devflow
 
+- `devflow init` — inicializar Devflow no diretório atual
 - `devflow status` — estado do projeto, confiança, evidências
 - `devflow next` — próxima ação recomendada
-- `devflow feature new <name>` — criar feature workspace
+- `devflow feature new <name> [--actor]` — criar feature workspace
 - `devflow feature complete <id>` — 25 checks de Definition of Done
-- `devflow gatekeep <id>` — aprovação independente (implementer ≠ approver)
-- `devflow adversarial-review <id>` — tentativa de rejeitar a feature (8 vetores de ataque)
-- `devflow doctor` — diagnóstico e correção
+- `devflow gatekeep <id> --approve|--reject [--actor]` — aprovação independente (requer flag explícita)
+- `devflow adversarial-review <id>` — 12 vetores de ataque (inclui bypass do próprio devflow)
+- `devflow doctor [--fix]` — diagnóstico e correção
 - `devflow update-cockpit` — regenerar DEVFLOW.md
+
+Opção global: `--mode local|experimental|strict|release`
 
 ## Princípios
 
-1. **CI é fonte de verdade** — sem CI verde, feature fica em review-required
-2. **Quem gera não aprova** — Constitution C12, inviolável
-3. **Evidência > Alegação** — "funcionou na minha máquina" não é verificação
+1. **CI é fonte de verdade** — em modo strict/release, CI verde é obrigatório e bloqueante
+2. **Quem gera não aprova** — Constitution C12, inviolável. Atores desconhecidos bloqueados em strict.
+3. **Evidência > Alegação** — logs incluem hash, commit SHA, branch, modo, versão
 4. **Gates bloqueantes** — check de qualidade, segurança, arquitetura = bloqueio
 5. **Na dúvida, bloqueia** — otimismo automático é o veneno que o devflow neutraliza
+6. **Decisão explícita** — aprovação nunca é implícita; requer `--approve` consciente
+7. **Auditável** — cada aprovação é um pacote auditável: condições, arquivos (hash), commit, ator, regra

@@ -3,19 +3,52 @@ import { execSync } from "node:child_process";
 import { atomicWrite } from "../utils/fs.js";
 import pc from "picocolors";
 
+type AttackVerdict = "pass" | "fail" | "inconclusive";
+
+interface AttackResult {
+  verdict: AttackVerdict;
+  finding: string | null;
+  reason?: string;
+}
+
+interface AttackVector {
+  name: string;
+  question: string;
+  check: () => AttackResult;
+}
+
+function inconclusive(reason: string): AttackResult {
+  return { verdict: "inconclusive", finding: null, reason };
+}
+
+function pass(): AttackResult {
+  return { verdict: "pass", finding: null };
+}
+
+function fail(finding: string): AttackResult {
+  return { verdict: "fail", finding };
+}
+
 export async function adversarialReview(
   featureId: string,
   rootPath: string
 ): Promise<void> {
   const featureDir = path.join(rootPath, "_devflow", "features", featureId);
 
-  console.log(pc.bold(`\nDevflow Adversarial Review — ${featureId}\n`));
-  console.log(pc.dim("Adversarial review: the reviewer tries to REJECT the feature.\n"));
+  // Load execution mode
+  let mode = "local";
+  try {
+    const { ConfigManager } = await import("../config/index.js");
+    const configMgr = new ConfigManager(rootPath);
+    const config = await configMgr.load();
+    mode = config.executionMode || "local";
+  } catch { /* use default */ }
+
+  console.log(pc.bold(`\nDevflow Adversarial Review — ${featureId}`));
+  console.log(pc.dim(`Mode: ${mode} | `) + pc.dim("Adversarial review: the reviewer tries to REJECT the feature.\n"));
   console.log(pc.dim("The question is not 'is this good?' but 'why should this be rejected?'\n"));
 
   const attackVectors: AttackVector[] = [];
-  const findings: string[] = [];
-  let passed = true;
 
   // ── Attack 1: Hidden coupling ──
   attackVectors.push({
@@ -29,9 +62,9 @@ export async function adversarialReview(
         );
         const result = JSON.parse(output);
         const violations = result.summary?.totalCruised > 0 ? (result.summary?.totalViolations || 0) : 0;
-        return violations > 0 ? `Found ${violations} dependency violations` : null;
+        return violations > 0 ? fail(`Found ${violations} dependency violations`) : pass();
       } catch {
-        return null; // tool unavailable → can't attack this vector
+        return inconclusive("dependency-cruiser not available — cannot verify hidden coupling");
       }
     },
   });
@@ -41,18 +74,17 @@ export async function adversarialReview(
     name: "Weak Tests",
     question: "Are tests merely decorative (testing nothing) or do they verify real behavior?",
     check: () => {
-      // Check for decorative test patterns: no assertions, only snapshot tests, only render tests
       try {
         const output = execSync(
           "grep -r 'it(' src/ --include='*.test.ts' --include='*.spec.ts' | grep -v 'expect(' | head -20 || true",
           { cwd: rootPath, encoding: "utf-8", timeout: 10000 }
         );
         if (output.trim()) {
-          return `Test cases without assertions found — decorative tests:\n${output.slice(0, 300)}`;
+          return fail(`Test cases without assertions found — decorative tests:\n${output.slice(0, 300)}`);
         }
-        return null;
+        return pass();
       } catch {
-        return null;
+        return inconclusive("grep not available — cannot verify test assertions");
       }
     },
   });
@@ -63,17 +95,16 @@ export async function adversarialReview(
     question: "Are there concrete dependencies where interfaces should exist?",
     check: () => {
       try {
-        // Look for direct `new` in domain code
         const output = execSync(
           "grep -rn 'new ' src/ --include='*.ts' | grep -v 'new Error' | grep -v 'new Date' | grep -v 'node_modules' | head -10 || true",
           { cwd: rootPath, encoding: "utf-8", timeout: 10000 }
         );
         if (output.trim()) {
-          return `Direct instantiation in potentially wrong layer:\n${output.slice(0, 300)}`;
+          return fail(`Direct instantiation in potentially wrong layer:\n${output.slice(0, 300)}`);
         }
-        return null;
+        return pass();
       } catch {
-        return null;
+        return inconclusive("grep not available — cannot verify abstraction failures");
       }
     },
   });
@@ -89,11 +120,11 @@ export async function adversarialReview(
           { cwd: rootPath, encoding: "utf-8", timeout: 10000 }
         );
         if (output.trim()) {
-          return `Domain imports infrastructure:\n${output.slice(0, 300)}`;
+          return fail(`Domain imports infrastructure:\n${output.slice(0, 300)}`);
         }
-        return null;
+        return pass();
       } catch {
-        return null;
+        return inconclusive("grep not available — cannot verify layer violations");
       }
     },
   });
@@ -109,20 +140,49 @@ export async function adversarialReview(
           { cwd: rootPath, encoding: "utf-8", timeout: 10000 }
         );
         if (output.trim()) {
-          return `Potential security issue (eval or sensitive env access):\n${output.slice(0, 300)}`;
+          return fail(`Potential security issue (eval or sensitive env access):\n${output.slice(0, 300)}`);
         }
-        return null;
+        return pass();
       } catch {
-        return null;
+        return inconclusive("grep not available — cannot verify security patterns");
       }
     },
   });
 
-  // ── Attack 6: Spec-code inconsistency (LLM-assisted, skipped in deterministic mode) ──
+  // ── Attack 6: Spec-code inconsistency ──
   attackVectors.push({
     name: "Spec-Code Gap",
     question: "Are there requirements not reflected in tests or code?",
-    check: () => null, // LLM-only check — deterministic verification requires AI review
+    check: () => {
+      const reqPath = path.join(featureDir, "requirements.md");
+      if (!reqPath) return inconclusive("requirements.md not found — cannot check spec-code gap");
+      try {
+        const reqContent = execSync(`cat "${reqPath}"`, { encoding: "utf-8", timeout: 5000 });
+        const rfMatches = reqContent.match(/RF\d+/g);
+        if (!rfMatches || rfMatches.length === 0) {
+          return pass(); // No functional requirements defined = nothing to gap-check
+        }
+        // Check if RF IDs appear in source code or test-plan
+        const srcDir = path.join(rootPath, "src");
+        let foundCount = 0;
+        for (const rf of [...new Set(rfMatches)]) {
+          try {
+            const grepResult = execSync(
+              `grep -rl "${rf}" "${srcDir}/" "${featureDir}/" 2>/dev/null || true`,
+              { encoding: "utf-8", timeout: 10000 }
+            );
+            if (grepResult.trim()) foundCount++;
+          } catch { /* skip */ }
+        }
+        const uniqueRFs = [...new Set(rfMatches)];
+        if (foundCount < uniqueRFs.length) {
+          return fail(`${uniqueRFs.length - foundCount}/${uniqueRFs.length} functional requirements not referenced in code or test-plan`);
+        }
+        return pass();
+      } catch {
+        return inconclusive("Could not verify spec-code gap — file access error");
+      }
+    },
   });
 
   // ── Attack 7: Requirements ignored ──
@@ -131,7 +191,7 @@ export async function adversarialReview(
     question: "Are any functional requirements missing test coverage?",
     check: () => {
       const reqPath = path.join(featureDir, "requirements.md");
-      if (!reqPath) return null;
+      if (!reqPath) return inconclusive("requirements.md not found");
       try {
         const output = execSync(
           `grep -c "RF\\d+" "${reqPath}" 2>/dev/null || echo "0"`,
@@ -139,21 +199,23 @@ export async function adversarialReview(
         );
         const rfCount = parseInt(output.trim(), 10);
         if (rfCount > 0) {
-          const testPath = path.join(featureDir, "test-plan.md");
+          const tpPath = path.join(featureDir, "test-plan.md");
           try {
             const testOutput = execSync(
-              `grep -c "RF\\d+" "${testPath}" 2>/dev/null || echo "0"`,
+              `grep -c "RF\\d+" "${tpPath}" 2>/dev/null || echo "0"`,
               { cwd: rootPath, encoding: "utf-8", timeout: 5000 }
             );
             const testRfCount = parseInt(testOutput.trim(), 10);
             if (testRfCount < rfCount) {
-              return `${rfCount} functional requirements in requirements.md, but only ${testRfCount} referenced in test-plan.md`;
+              return fail(`${rfCount} functional requirements in requirements.md, but only ${testRfCount} referenced in test-plan.md`);
             }
-          } catch { /* can't read test-plan */ }
+          } catch {
+            return inconclusive("test-plan.md not found — cannot verify RF coverage");
+          }
         }
-        return null;
+        return pass();
       } catch {
-        return null;
+        return inconclusive("Could not verify requirement coverage — file access error");
       }
     },
   });
@@ -169,31 +231,173 @@ export async function adversarialReview(
           { cwd: rootPath, encoding: "utf-8", timeout: 30000 }
         );
         if (output.includes("Found") && !output.includes("Found 0")) {
-          return `Code duplication detected:\n${output.slice(0, 300)}`;
+          return fail(`Code duplication detected:\n${output.slice(0, 300)}`);
         }
-        return null;
+        return pass();
       } catch {
-        return null;
+        return inconclusive("jscpd not available — cannot check code duplication");
+      }
+    },
+  });
+
+  // ── Attack 9: Devflow bypass — State tampering ──
+  attackVectors.push({
+    name: "State Tampering",
+    question: "Has state.json been modified without a corresponding gatekeep log entry?",
+    check: () => {
+      try {
+        const statePath = path.join(rootPath, ".devflow", "state.json");
+        const gatekeepLogPath = path.join(rootPath, ".devflow", "audits", "gatekeep-log.jsonl");
+        if (!statePath) return inconclusive("state.json not found");
+        const stateStat = execSync(`stat -c %Y "${statePath}" 2>/dev/null || echo "0"`, { encoding: "utf-8" }).trim();
+        const hasGatekeepLog = execSync(`test -f "${gatekeepLogPath}" && echo "yes" || echo "no"`, { encoding: "utf-8" }).trim();
+        if (hasGatekeepLog === "no" && stateStat !== "0") {
+          return fail("state.json exists but no gatekeep-log.jsonl found — potential manual state manipulation");
+        }
+        return pass();
+      } catch {
+        return inconclusive("Could not verify state tampering — file access error");
+      }
+    },
+  });
+
+  // ── Attack 10: Devflow bypass — Log forgery ──
+  attackVectors.push({
+    name: "Log Forgery",
+    question: "Are implementation-log.jsonl entries missing required fields?",
+    check: () => {
+      const logPath = path.join(featureDir, "implementation-log.jsonl");
+      try {
+        if (!logPath) return inconclusive("implementation-log.jsonl not found");
+        const raw = execSync(`cat "${logPath}" 2>/dev/null || echo ""`, { encoding: "utf-8" }).trim();
+        if (!raw) return fail("implementation-log.jsonl is empty");
+        const lines = raw.split("\n").filter(l => l.trim());
+        const invalidLines: string[] = [];
+        for (let i = 0; i < lines.length; i++) {
+          try {
+            const entry = JSON.parse(lines[i]!);
+            if (!entry.timestamp || !entry.actionId || !entry.status) {
+              invalidLines.push(`Line ${i + 1}: missing required fields (timestamp, actionId, status)`);
+            }
+          } catch { invalidLines.push(`Line ${i + 1}: invalid JSON`); }
+        }
+        if (invalidLines.length > 0) {
+          return fail(`Log forgery detected:\n${invalidLines.slice(0, 5).join("\n")}`);
+        }
+        return pass();
+      } catch {
+        return inconclusive("Could not verify log integrity");
+      }
+    },
+  });
+
+  // ── Attack 11: Devflow bypass — False completion ──
+  attackVectors.push({
+    name: "False Completion",
+    question: "Are actions marked [X] without corresponding implementation-log entries?",
+    check: () => {
+      try {
+        const actionsPath = path.join(featureDir, "actions.md");
+        const logPath = path.join(featureDir, "implementation-log.jsonl");
+        const actionsContent = execSync(`cat "${actionsPath}" 2>/dev/null || echo ""`, { encoding: "utf-8" }).trim();
+        if (!actionsContent) return inconclusive("actions.md not found");
+        const completedActions = (actionsContent.match(/\[x\]/gi) || []).length;
+        if (completedActions === 0) return pass();
+        const logContent = execSync(`cat "${logPath}" 2>/dev/null || echo ""`, { encoding: "utf-8" }).trim();
+        const logEntries = logContent.split("\n").filter(l => l.trim()).length;
+        if (completedActions > 0 && logEntries === 0) {
+          return fail(`${completedActions} actions marked [X] but implementation-log.jsonl is empty — possible false completion`);
+        }
+        if (completedActions > logEntries * 2) {
+          return fail(`${completedActions} actions completed but only ${logEntries} log entries — possible false completion`);
+        }
+        return pass();
+      } catch {
+        return inconclusive("Could not verify action completion integrity");
+      }
+    },
+  });
+
+  // ── Attack 12: Devflow bypass — Same-actor variants ──
+  attackVectors.push({
+    name: "Same-Actor Bypass",
+    question: "Is the same actor appearing with name variants to bypass segregation?",
+    check: () => {
+      try {
+        const gatekeepLogPath = path.join(rootPath, ".devflow", "audits", "gatekeep-log.jsonl");
+        const gatekeepContent = execSync(`cat "${gatekeepLogPath}" 2>/dev/null || echo ""`, { encoding: "utf-8" }).trim();
+        if (!gatekeepContent) return pass(); // No prior gatekeeps
+        const actors = new Set<string>();
+        for (const line of gatekeepContent.split("\n")) {
+          if (!line.trim()) continue;
+          try {
+            const entry = JSON.parse(line);
+            if (entry.gatekeeper) actors.add(entry.gatekeeper.toLowerCase().trim());
+            if (entry.implementer) actors.add(entry.implementer.toLowerCase().trim());
+          } catch { /* skip */ }
+        }
+        // Check for extremely similar actor names (Levenshtein-like)
+        const actorList = [...actors];
+        for (let i = 0; i < actorList.length; i++) {
+          for (let j = i + 1; j < actorList.length; j++) {
+            const a = actorList[i]!;
+            const b = actorList[j]!;
+            if (a !== b && (a.includes(b) || b.includes(a) || a.replace(/[^a-z]/g, "") === b.replace(/[^a-z]/g, ""))) {
+              return fail(`Suspicious actor name similarity: "${actorList[i]}" and "${actorList[j]}" — possible bypass attempt`);
+            }
+          }
+        }
+        return pass();
+      } catch {
+        return inconclusive("Could not verify actor uniqueness");
       }
     },
   });
 
   // ── Run all attacks ──
+  const results: Array<{ attack: AttackVector; result: AttackResult }> = [];
+  let failCount = 0;
+  let inconclusiveCount = 0;
+
   for (const attack of attackVectors) {
     console.log(`  🔍 ${pc.bold(attack.name)}: ${attack.question}`);
     const result = attack.check();
-    if (result) {
-      console.log(`    ${pc.red("✖")} Found: ${result.slice(0, 150)}`);
-      findings.push(`[${attack.name}] ${result}`);
-      passed = false;
+    results.push({ attack, result });
+
+    if (result.verdict === "fail") {
+      console.log(`    ${pc.red("✖")} FAIL: ${result.finding?.slice(0, 150)}`);
+      failCount++;
+    } else if (result.verdict === "inconclusive") {
+      console.log(`    ${pc.yellow("?")} INCONCLUSIVE: ${result.reason}`);
+      inconclusiveCount++;
     } else {
-      console.log(`    ${pc.green("✓")} No issues found`);
+      console.log(`    ${pc.green("✓")} PASS`);
     }
   }
 
-  // ── Generate report ──
-  console.log(pc.bold(`\nAdversarial Review Verdict: ${passed ? pc.green("PASS") : pc.red("FAIL")}\n`));
+  // ── Overall verdict ──
+  const strictMode = mode === "strict" || mode === "release";
+  let overallVerdict: "PASS" | "FAIL" | "INCONCLUSIVE";
 
+  if (failCount > 0) {
+    overallVerdict = "FAIL";
+  } else if (inconclusiveCount > 0 && strictMode) {
+    overallVerdict = "INCONCLUSIVE";
+  } else if (inconclusiveCount > 0) {
+    overallVerdict = "PASS"; // In local/experimental, inconclusive doesn't block
+  } else {
+    overallVerdict = "PASS";
+  }
+
+  const verdictColor = overallVerdict === "PASS" ? pc.green : overallVerdict === "FAIL" ? pc.red : pc.yellow;
+  console.log(pc.bold(`\nAdversarial Review Verdict: ${verdictColor(overallVerdict)}`));
+  console.log(pc.dim(`  Pass: ${attackVectors.length - failCount - inconclusiveCount} | Fail: ${failCount} | Inconclusive: ${inconclusiveCount}`));
+  if (strictMode && overallVerdict === "INCONCLUSIVE") {
+    console.log(pc.yellow(`  Mode '${mode}' requires all vectors verifiable. Inconclusive results block.\n`));
+  }
+  console.log();
+
+  // ── Generate report ──
   const reportPath = path.join(rootPath, ".devflow", "audits", "adversarial-review.md");
   const auditDir = path.dirname(reportPath);
 
@@ -202,41 +406,52 @@ export async function adversarialReview(
   } catch { /* ok */ }
 
   const now = new Date().toISOString();
+  const findingsList = results
+    .filter(r => r.result.verdict === "fail")
+    .map(r => `[${r.attack.name}] ${r.result.finding}`);
+
   const reportContent = `# Adversarial Review — ${featureId}
 
 > **Date:** ${now}
-> **Verdict:** ${passed ? "PASS" : "FAIL"}
+> **Verdict:** ${overallVerdict}
+> **Mode:** ${mode}
 > **Reviewer:** Adversarial Reviewer Agent
 
 ## Attack Vectors Checked
 
-${attackVectors.map((a) => {
-  const found = findings.find((f) => f.startsWith(`[${a.name}]`));
-  return `- ${found ? "✖" : "✓"} **${a.name}**: ${a.question}${found ? `\n  - Finding: ${found.replace(`[${a.name}] `, "")}` : ""}`;
+${results.map(({ attack, result }) => {
+  const icon = result.verdict === "pass" ? "✓" : result.verdict === "fail" ? "✖" : "?";
+  const detail = result.verdict === "fail" ? `\n  - Finding: ${result.finding}` : result.verdict === "inconclusive" ? `\n  - Reason: ${result.reason}` : "";
+  return `- ${icon} **${attack.name}**: ${attack.question}${detail}`;
 }).join("\n")}
 
-${findings.length > 0 ? `## Findings\n\n${findings.map((f, i) => `${i + 1}. ${f}`).join("\n")}` : "## No Findings\n\nAdversarial reviewer attempted all attack vectors and could not find grounds for rejection."}
+${findingsList.length > 0 ? `## Findings\n\n${findingsList.map((f, i) => `${i + 1}. ${f}`).join("\n")}` : ""}
 
-## Reviewer Statement
+## Summary
 
-${passed
-  ? "I attempted to reject this feature across 8 attack vectors. None produced evidence warranting rejection. The feature appears to have: no hidden coupling, tests with real assertions, proper abstraction boundaries, clean layer separation, no security issues, requirements covered in tests, and no significant duplication."
-  : `I found ${findings.length} issue(s) that warrant rejection or correction. See findings above.`}
+| Verdict | Count |
+|---------|-------|
+| Pass | ${attackVectors.length - failCount - inconclusiveCount} |
+| Fail | ${failCount} |
+| Inconclusive | ${inconclusiveCount} |
+
+**Overall:** ${overallVerdict}${overallVerdict === "INCONCLUSIVE" ? " — unverifiable vectors found, blocking in strict/release mode" : ""}
 `;
 
   await atomicWrite(reportPath, reportContent);
 
-  if (passed) {
+  if (overallVerdict === "PASS") {
     console.log(pc.green("Adversarial review passed. Feature survived all attack vectors."));
-    console.log(pc.dim(`Report: ${reportPath}\n`));
+    console.log(pc.dim(`Report: ${reportPath}`));
+    console.log(pc.bold("\nNext Step: Run `devflow gatekeep " + featureId + " --approve --actor <reviewer>`"));
+  } else if (overallVerdict === "INCONCLUSIVE") {
+    console.log(pc.yellow(`Adversarial review inconclusive — ${inconclusiveCount} vector(s) could not be verified.`));
+    console.log(pc.dim(`Report: ${reportPath}`));
+    console.log(pc.bold("\nNext Step: Install missing tools or switch to --mode local, then re-run."));
   } else {
-    console.log(pc.red(`Adversarial review found ${findings.length} issue(s). Fix before proceeding.`));
-    console.log(pc.dim(`Report: ${reportPath}\n`));
+    console.log(pc.red(`Adversarial review failed — ${failCount} finding(s). Fix before proceeding.`));
+    console.log(pc.dim(`Report: ${reportPath}`));
+    console.log(pc.bold("\nNext Step: Fix findings above, then re-run `devflow adversarial-review " + featureId + "`"));
   }
-}
-
-interface AttackVector {
-  name: string;
-  question: string;
-  check: () => string | null;
+  console.log();
 }

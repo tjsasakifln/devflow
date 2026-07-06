@@ -11,7 +11,6 @@ export type DevflowState =
   // Specification phase
   | "feature-requirements"
   | "feature-clarification-needed"
-  | "feature-requirements-reviewed"
   // Design phase
   | "feature-design"
   | "feature-design-reviewed"
@@ -31,12 +30,10 @@ export type DevflowState =
   | "feature-adversarial-review"
   // Completion
   | "feature-done"
-  // Legacy states (kept for backward compat)
-  | "feature-requirements-audited"
+  // Legacy states (kept for backward compat — deprecated)
   | "feature-planning"
   | "feature-planned"
   | "feature-todo"
-  | "feature-validation"
   // Anomaly states
   | "drift-detected"
   | "blocked";

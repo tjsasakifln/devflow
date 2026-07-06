@@ -9,6 +9,7 @@ export type {
 export type { ActionRecommendation, NextActionEntry } from "./engine.js";
 export type { ProjectInspection, FeatureInfo } from "./project.js";
 export type {
+  ExecutionMode,
   TemplateId,
   TemplatePayload,
   ArtifactPaths,

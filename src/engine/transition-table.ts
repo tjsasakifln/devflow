@@ -11,10 +11,8 @@ export const TRANSITION_TABLE: Record<DevflowState, DevflowState[]> = {
   "feature-empty": ["feature-requirements"],
   "feature-requirements": [
     "feature-clarification-needed",
-    "feature-requirements-audited",
+    "feature-design",
   ],
-  // New spec-driven states
-  "feature-requirements-reviewed": ["feature-design"],
   "feature-design": ["feature-design-reviewed"],
   "feature-design-reviewed": ["feature-test-plan"],
   "feature-test-plan": ["feature-test-plan-ready"],
@@ -23,20 +21,14 @@ export const TRANSITION_TABLE: Record<DevflowState, DevflowState[]> = {
   "feature-ci-verified": ["feature-review"],
   "feature-review": ["feature-adversarial-review", "feature-done", "feature-coding-in-progress"],
   "feature-adversarial-review": ["feature-done", "feature-coding-in-progress"],
-  // Legacy states (kept for backward compatibility)
+  // Legacy states (deprecated — kept for backward compatibility)
   "feature-clarification-needed": [
-    "feature-requirements-reviewed",
+    "feature-design",
     "feature-requirements",
   ],
-  "feature-requirements-audited": ["feature-design"],
   "feature-planning": ["feature-planned"],
   "feature-planned": ["feature-todo", "feature-pre-code-audit"],
   "feature-todo": ["feature-pre-code-audit"],
-  "feature-validation": [
-    "feature-done",
-    "feature-coding-in-progress",
-    "drift-detected",
-  ],
   "feature-pre-code-audit": ["feature-coding-ready", "feature-empty"],
   "feature-coding-ready": ["feature-coding-in-progress"],
   "feature-coding-in-progress": [
@@ -213,7 +205,7 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
     sourceState: "feature-requirements",
     targetStates: [
       "feature-clarification-needed",
-      "feature-requirements-audited",
+      "feature-design",
     ],
     primaryAction: {
       id: "review-requirements",
@@ -234,20 +226,6 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
         whenToChoose: "Requirements are rough and need structure",
       },
     ],
-  },
-  // New spec-driven states
-  "feature-requirements-reviewed": {
-    sourceState: "feature-requirements-reviewed",
-    targetStates: ["feature-design"],
-    primaryAction: {
-      id: "create-design",
-      description: "Create architectural roadmap — define components, patterns, layers, and interfaces",
-      why: "Requirements are reviewed and clear. Now design the solution before writing any code.",
-      agentOrWorkflow: "architect",
-      writes: ["_devflow/features/<id>/roadmap.md"],
-      reads: ["_devflow/features/<id>/requirements.md"],
-    },
-    alternativeActions: [],
   },
   "feature-design": {
     sourceState: "feature-design",
@@ -363,7 +341,7 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
   },
   "feature-clarification-needed": {
     sourceState: "feature-clarification-needed",
-    targetStates: ["feature-requirements-reviewed", "feature-requirements"],
+    targetStates: ["feature-design", "feature-requirements"],
     primaryAction: {
       id: "resolve-doubts",
       description:
@@ -377,37 +355,6 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
       {
         description: "Rewrite requirements from scratch",
         whenToChoose: "Too many doubts — requirements may need a fresh start",
-      },
-    ],
-  },
-  "feature-requirements-audited": {
-    sourceState: "feature-requirements-audited",
-    targetStates: ["feature-planning"],
-    primaryAction: {
-      id: "create-roadmap",
-      description:
-        "Create architectural-roadmap.md — define implementation order, architecture decisions, files to create/modify, and risk assessment",
-      why: "Audited requirements need a technical plan. The roadmap bridges the gap between what and how.",
-      agentOrWorkflow: "architect",
-      writes: [
-        "_devflow/features/<id>/roadmap.md",
-        "_devflow/features/<id>/investigation.md",
-        "_devflow/features/<id>/data-delta.md",
-      ],
-      reads: [
-        "_devflow/features/<id>/requirements.md",
-        "_devflow/features/<id>/quality-audit.md",
-        "_devflow/discovery/*",
-      ],
-    },
-    alternativeActions: [
-      {
-        description: "Create a quick/minimal plan for simple features",
-        whenToChoose: "Feature is small and well-understood",
-      },
-      {
-        description: "Create a detailed plan with diagrams",
-        whenToChoose: "Feature is complex and needs thorough architecture",
       },
     ],
   },
@@ -543,7 +490,7 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
   },
   "feature-coding-in-progress": {
     sourceState: "feature-coding-in-progress",
-    targetStates: ["feature-validation", "drift-detected", "blocked"],
+    targetStates: ["feature-verification", "drift-detected", "blocked"],
     primaryAction: {
       id: "continue-coding",
       description:
@@ -561,40 +508,6 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
       {
         description: "Request code review on current progress",
         whenToChoose: "Need feedback before continuing",
-      },
-    ],
-  },
-  "feature-validation": {
-    sourceState: "feature-validation",
-    targetStates: [
-      "feature-done",
-      "feature-coding-in-progress",
-      "drift-detected",
-    ],
-    primaryAction: {
-      id: "qa-validation",
-      description:
-        "Run full QA validation: verify all acceptance criteria, generate qa-report.md, and review regression-watch.md",
-      why: "Implementation is complete but hasn't been validated. QA ensures the feature meets requirements and doesn't break existing functionality.",
-      agentOrWorkflow: "qa",
-      writes: [
-        "_devflow/features/<id>/qa-report.md",
-        "_devflow/features/<id>/regression-watch.md",
-      ],
-      reads: [
-        "_devflow/features/<id>/actions.md",
-        "_devflow/features/<id>/requirements.md",
-        "implementation-log.jsonl",
-      ],
-    },
-    alternativeActions: [
-      {
-        description: "Fix issues found during validation",
-        whenToChoose: "QA reveals bugs that need fixing before release",
-      },
-      {
-        description: "Roll back if feature is fundamentally broken",
-        whenToChoose: "Validation reveals major issues requiring re-think",
       },
     ],
   },
@@ -629,7 +542,7 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
   },
   "drift-detected": {
     sourceState: "drift-detected",
-    targetStates: ["blocked", "feature-empty", "feature-validation"],
+    targetStates: ["blocked", "feature-empty", "feature-verification"],
     primaryAction: {
       id: "reconcile-drift",
       description:

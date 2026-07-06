@@ -1,3 +1,5 @@
+export type ExecutionMode = "local" | "experimental" | "strict" | "release";
+
 export type TemplateId =
   | "requirements"
   | "clarification"
@@ -58,6 +60,7 @@ export interface DevflowConfig {
   createdTimestamp: string;
   modifiedTimestamp: string;
   defaultState: string;
+  executionMode: ExecutionMode;
   hooksEnabled: boolean;
   safeMode: boolean;
   claudeIntegration: {
@@ -133,9 +136,15 @@ export interface GatekeepEntry {
   gatekeeper: string;
   implementer: string;
   featureId: string;
-  decision: "approved" | "rejected";
+  decision: "approved" | "rejected" | "refused";
   reason: string;
   dodChecksPassed: number;
   dodChecksTotal: number;
   ciStatus: string;
+  actorOrigin?: "cli" | "claude-code" | "ci" | "manual" | "inferred";
+  commitSha?: string;
+  branch?: string;
+  devflowVersion?: string;
+  executionMode?: ExecutionMode;
+  evidenceHashes?: Record<string, string>;
 }

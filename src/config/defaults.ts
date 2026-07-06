@@ -6,6 +6,7 @@ export const DEFAULTS: DevflowConfig = {
   createdTimestamp: new Date().toISOString(),
   modifiedTimestamp: new Date().toISOString(),
   defaultState: "no-project",
+  executionMode: "local",
   hooksEnabled: false,
   safeMode: false,
   claudeIntegration: {

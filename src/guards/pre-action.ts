@@ -1,6 +1,19 @@
 import type { GuardCheck, GuardResult } from "../types/guards.js";
 import type { FeatureInfo, ProjectInspection } from "../types/project.js";
 
+function getMissingArtifacts(feature: FeatureInfo): string[] {
+  const missing: string[] = [];
+  if (!feature.hasRequirements) missing.push("requirements.md — define what to build");
+  if (feature.hasRequirements && feature.requirementsDoubts) missing.push("Resolve [DOUBT] markers in requirements.md before coding");
+  if (!feature.hasQualityAudit) missing.push("quality-audit.md — run quality audit on requirements");
+  if (!feature.hasRoadmap) missing.push("roadmap.md — define architecture and design decisions");
+  if (!feature.hasActions) missing.push("actions.md — decompose work into atomic tasks");
+  if (!feature.hasTestPlan) missing.push("test-plan.md — define verification strategy before coding");
+  if (!feature.hasLegacyImpact) missing.push("legacy-impact.md — document affected modules");
+  if (!feature.hasRegressionWatch) missing.push("regression-watch.md — list areas to monitor for regressions");
+  return missing;
+}
+
 function mkCheck(
   checkId: string,
   description: string,
@@ -20,13 +33,29 @@ export function checkPreActionGuard(
   const checks: GuardCheck[] = [];
 
   // Check: feature is in a coding-ready or later state
+  // Must match state-detector's feature-coding-ready condition
+  const canCode = feature.hasRequirements
+    && !feature.requirementsDoubts
+    && feature.hasQualityAudit
+    && feature.hasRoadmap
+    && feature.hasActions
+    && feature.hasTestPlan
+    && feature.hasLegacyImpact
+    && feature.hasRegressionWatch;
+
+  const missingArtifacts = getMissingArtifacts(feature);
+
   checks.push(mkCheck(
     "feature-ready",
     "Feature is in a coding-ready state",
+    canCode,
+    canCode
+      ? "All pre-code artifacts present: requirements, roadmap, actions, test-plan, legacy-impact, regression-watch"
+      : `Missing pre-code artifacts (${missingArtifacts.length}): ${missingArtifacts.join("; ")}`,
     true,
-    "Feature state allows coding actions",
-    true,
-    "Ensure feature is in coding-ready state (all artifacts complete)",
+    canCode
+      ? "N/A"
+      : `Complete all pre-code artifacts before coding. Run \`devflow next\` for guidance. Missing: ${missingArtifacts.slice(0, 3).join(", ")}${missingArtifacts.length > 3 ? ` and ${missingArtifacts.length - 3} more` : ""}`,
   ));
 
   // Check: actions file has the target action

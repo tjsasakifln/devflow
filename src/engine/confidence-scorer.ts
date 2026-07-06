@@ -171,11 +171,6 @@ function evidenceSupportsState(
       if (e.key === "requirements_doubts") return e.value === true;
       return null;
 
-    case "feature-requirements-audited":
-      if (e.key === "has_quality_audit") return e.value === true;
-      if (e.key === "has_roadmap") return e.value === false;
-      return null;
-
     case "feature-planning":
       if (e.key === "has_roadmap") return e.value === true;
       if (e.key === "has_actions") return e.value === false;
@@ -206,11 +201,6 @@ function evidenceSupportsState(
       if (e.key === "has_qa_report") return e.value === false;
       return null;
 
-    case "feature-validation":
-      if (e.key === "actions_completion_ratio") return e.value === 1;
-      if (e.key === "has_qa_report") return e.value === false;
-      return null;
-
     case "feature-done":
       if (e.key === "has_qa_report") return e.value === true;
       if (e.key === "actions_completion_ratio") return e.value === 1;
@@ -225,8 +215,6 @@ function evidenceSupportsState(
       // Blocked is determined by explicit blocker markers
       return null;
 
-    // New spec-driven states
-    case "feature-requirements-reviewed":
     case "feature-design":
     case "feature-design-reviewed":
     case "feature-test-plan":

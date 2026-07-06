@@ -259,5 +259,11 @@ export async function doctorCommand(
       console.log(pc.dim("\nRun with --fix to auto-fix issues."));
     }
   }
+  console.log(pc.bold("Next Step:"));
+  if (failed === 0 && manual === 0) {
+    console.log(pc.dim("  All healthy. Run `devflow status` to see current state."));
+  } else {
+    console.log(pc.dim("  Fix issues above, then run `devflow status` to verify state."));
+  }
   console.log();
 }

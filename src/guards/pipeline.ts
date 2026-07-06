@@ -586,8 +586,8 @@ function buildRefusalMessage(failedChecks: GuardCheck[]): string {
   return lines.join("\n");
 }
 
-// Pre-action guard: runs immediately before each coding action
-export function checkPreActionGuard(cwd: string): GuardResult {
+// Pre-action git guard: verifies branch safety and worktree cleanliness before coding
+export function checkPreActionGitGuard(cwd: string): GuardResult {
   const checks: GuardCheck[] = [];
 
   // Check git status

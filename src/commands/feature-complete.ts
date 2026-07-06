@@ -27,6 +27,7 @@ export interface DoDResult {
   total: number;
   ciStatus: string;
   allBlockingPassed: boolean;
+  blockingFailed: Array<{ id: string; description: string; remediation: string }>;
 }
 
 export async function featureComplete(
@@ -60,12 +61,16 @@ export async function featureCompleteInternal(
   await runAllDoDChecks(checks, rootPath, featureDir);
 
   const allBlockingPassed = checks.filter((c) => c.blocking && !c.passed).length === 0;
+  const blockingFailed = checks
+    .filter((c) => c.blocking && !c.passed)
+    .map((c) => ({ id: c.id, description: c.description, remediation: c.remediation }));
 
   return {
     passed: checks.filter((c) => c.passed).length,
     total: checks.length,
-    ciStatus: checks.find((c) => c.id === "19")?.evidence || "not-checked",
+    ciStatus: checks.find((c) => c.id === "16")?.evidence || "not-checked",
     allBlockingPassed,
+    blockingFailed,
   };
 }
 
@@ -511,25 +516,40 @@ async function checkCI(checks: DoDCheck[], rootPath: string, _featureDir: string
           : "Set up CI with .github/workflows/ci.yml and enable ciIntegration in config",
       });
     } else {
+      const mode = config.executionMode || "local";
+      const ciRequired = mode === "strict" || mode === "release";
       checks.push({
         id: "16",
         description: "CI verification",
         category: "ci",
-        passed: true,
-        evidence: "CI integration not enabled in config",
-        blocking: false,
+        passed: !ciRequired,
+        evidence: ciRequired
+          ? "⛔ CI integration not enabled — required in " + mode + " mode"
+          : "CI integration not enabled in config",
+        blocking: ciRequired,
         remediation: "Enable CI: set ciIntegration.enabled=true in .devflow/config.json",
       });
     }
   } catch {
+    const { ConfigManager } = await import("../config/index.js");
+    const { isCIUnavailableBlocking } = await import("../engine/ci-verifier.js");
+    const configMgr2 = new ConfigManager(rootPath);
+    const config2 = await configMgr2.load();
+    const mode = config2.executionMode || "local";
+    const ciRequired = isCIUnavailableBlocking(mode);
+
     checks.push({
       id: "16",
       description: "CI verification",
       category: "ci",
-      passed: true,
-      evidence: "CI verifier not available",
-      blocking: false,
-      remediation: "Install GitHub CLI: https://cli.github.com/",
+      passed: !ciRequired,
+      evidence: ciRequired
+        ? "⛔ CI verifier not available — blocking in " + mode + " mode"
+        : "CI verifier not available — advisory in " + mode + " mode",
+      blocking: ciRequired,
+      remediation: ciRequired
+        ? "Install GitHub CLI (https://cli.github.com/) or switch to --mode local"
+        : "Install GitHub CLI: https://cli.github.com/",
     });
   }
 }
