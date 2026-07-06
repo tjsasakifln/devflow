@@ -46,8 +46,8 @@ devflow next                        # Recommended next action
 devflow feature new "my-feature"    # Create feature workspace
 # Edit artifacts: requirements.md → roadmap.md → actions.md → test-plan.md
 # Implement following actions.md
-devflow feature complete my-feature # Run 25 DoD checks
 devflow adversarial-review my-feature # 12 attack vectors
+devflow feature complete my-feature # Run 25 DoD checks
 devflow gatekeep my-feature --approve --actor "reviewer-name"
 ```
 
