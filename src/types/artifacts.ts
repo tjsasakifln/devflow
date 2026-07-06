@@ -8,7 +8,9 @@ export type TemplateId =
   | "legacy-impact"
   | "regression-watch"
   | "investigation"
-  | "data-delta";
+  | "data-delta"
+  | "constitution"
+  | "test-plan";
 
 export interface TemplatePayload {
   featureName: string;
@@ -61,6 +63,24 @@ export interface DevflowConfig {
   };
   features: {
     numberingScheme: "sequential" | "timestamp";
+  };
+  constitution: {
+    enabled: boolean;
+    blockingGates: boolean;
+  };
+  confidenceThresholds: {
+    high: number;
+    medium: number;
+  };
+  deterministicGates: {
+    typecheck: boolean;
+    lint: boolean;
+    test: boolean;
+    coverage: boolean;
+    circularDeps: boolean;
+    forbiddenDeps: boolean;
+    duplication: boolean;
+    unusedDeps: boolean;
   };
 }
 

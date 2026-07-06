@@ -60,6 +60,7 @@ export async function scanFeature(
     hasRegressionWatch,
     hasReleaseNotes,
     hasImplementationLog,
+    hasTestPlan,
   ] = await Promise.all([
     fileExists(path.join(featureDir, "requirements.md")),
     fileExists(path.join(featureDir, "clarification.md")),
@@ -73,6 +74,7 @@ export async function scanFeature(
     fileExists(path.join(featureDir, "regression-watch.md")),
     fileExists(path.join(featureDir, "release-notes.md")),
     fileExists(path.join(featureDir, "implementation-log.jsonl")),
+    fileExists(path.join(featureDir, "test-plan.md")),
   ]);
 
   let requirementsDoubts = false;
@@ -112,6 +114,7 @@ export async function scanFeature(
     hasRegressionWatch,
     hasReleaseNotes,
     hasImplementationLog,
+    hasTestPlan,
     requirementsDoubts,
     actionsCompletionRatio,
     isActive: false,

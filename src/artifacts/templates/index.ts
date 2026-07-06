@@ -9,6 +9,8 @@ import { legacyImpactTemplate } from "./legacy-impact.js";
 import { regressionWatchTemplate } from "./regression-watch.js";
 import { investigationTemplate } from "./investigation.js";
 import { dataDeltaTemplate } from "./data-delta.js";
+import { constitutionTemplate } from "./constitution.js";
+import { testPlanTemplate } from "./test-plan.js";
 
 type TemplateFn = (payload: TemplatePayload) => string;
 
@@ -23,6 +25,8 @@ const templateRegistry: Record<TemplateId, TemplateFn> = {
   "regression-watch": regressionWatchTemplate,
   investigation: investigationTemplate,
   "data-delta": dataDeltaTemplate,
+  constitution: constitutionTemplate,
+  "test-plan": testPlanTemplate,
 };
 
 export function renderTemplate(id: TemplateId, payload: TemplatePayload): string {

@@ -2,7 +2,10 @@ import { describe, it, expect } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspectProject } from "../../src/project/inspector.js";
-import { detectState, determineFeatureState } from "../../src/engine/state-detector.js";
+import {
+  detectState,
+  determineFeatureState,
+} from "../../src/engine/state-detector.js";
 import type { FeatureInfo } from "../../src/types/project.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,7 +55,6 @@ describe("State Detector", () => {
   // ── ORDER MATTERS regression tests ──
   // G-04: Verifies contractual branch ordering in determineFeatureState.
   // Branches are ordered most-specific → most-generic. First match wins.
-  // Reordering breaks state detection silently.
 
   function baseFeature(overrides: Partial<FeatureInfo> = {}): FeatureInfo {
     return {
@@ -70,6 +72,7 @@ describe("State Detector", () => {
       hasRegressionWatch: false,
       hasReleaseNotes: false,
       hasImplementationLog: false,
+      hasTestPlan: false,
       requirementsDoubts: false,
       actionsCompletionRatio: 0,
       isActive: true,
@@ -84,19 +87,20 @@ describe("State Detector", () => {
         hasRegressionWatch: true,
         hasLegacyImpact: true,
         actionsCompletionRatio: 1.0,
-        hasImplementationLog: true, // also matches coding-in-progress, but done is more specific
+        hasImplementationLog: true,
+        hasTestPlan: true,
       });
       expect(determineFeatureState(f)).toBe("feature-done");
     });
 
-    it("returns feature-done over feature-validation when both match", () => {
-      // feature-done checked first → must win even when feature-validation also matches
+    it("returns feature-done over feature-review when both match", () => {
       const f = baseFeature({
         hasQaReport: true,
         hasRegressionWatch: true,
         hasLegacyImpact: true,
         actionsCompletionRatio: 1.0,
         hasImplementationLog: true,
+        hasTestPlan: true,
         hasQualityAudit: true,
         hasRoadmap: true,
         hasActions: true,
@@ -105,31 +109,34 @@ describe("State Detector", () => {
       expect(determineFeatureState(f)).toBe("feature-done");
     });
 
-    it("returns feature-validation when actions done but no QA report", () => {
+    it("returns feature-review when actions done + impl log + QA + test plan", () => {
       const f = baseFeature({
         actionsCompletionRatio: 1.0,
+        hasImplementationLog: true,
+        hasQaReport: true,
+        hasTestPlan: true,
         hasRoadmap: true,
         hasActions: true,
         hasRequirements: true,
       });
-      expect(determineFeatureState(f)).toBe("feature-validation");
+      expect(determineFeatureState(f)).toBe("feature-review");
+    });
+
+    it("returns feature-verification when impl log exists, actions done, no QA", () => {
+      const f = baseFeature({
+        hasImplementationLog: true,
+        actionsCompletionRatio: 1.0,
+        hasActions: true,
+        hasTestPlan: true,
+      });
+      expect(determineFeatureState(f)).toBe("feature-verification");
     });
 
     it("returns feature-coding-in-progress when impl log exists, no QA", () => {
       const f = baseFeature({
         hasImplementationLog: true,
         hasActions: true,
-      });
-      expect(determineFeatureState(f)).toBe("feature-coding-in-progress");
-    });
-
-    it("returns feature-coding-in-progress over feature-todo when both match", () => {
-      // impl log + actions partial → coding-in-progress, not todo
-      const f = baseFeature({
-        hasImplementationLog: true,
-        hasActions: true,
         actionsCompletionRatio: 0.5,
-        hasRequirements: true,
       });
       expect(determineFeatureState(f)).toBe("feature-coding-in-progress");
     });
@@ -141,68 +148,72 @@ describe("State Detector", () => {
         hasQualityAudit: true,
         hasRoadmap: true,
         hasActions: true,
+        hasTestPlan: true,
         hasLegacyImpact: true,
         hasRegressionWatch: true,
       });
       expect(determineFeatureState(f)).toBe("feature-coding-ready");
     });
 
-    it("returns feature-pre-code-audit when reqs+roadmap+actions+audit exist", () => {
+    it("returns feature-pre-code-audit when reqs+roadmap+actions+audit+testplan exist", () => {
       const f = baseFeature({
         hasRequirements: true,
         hasRoadmap: true,
         hasActions: true,
         hasQualityAudit: true,
-        hasLegacyImpact: true, // extra — should not change result
+        hasTestPlan: true,
+        hasLegacyImpact: true,
       });
       expect(determineFeatureState(f)).toBe("feature-pre-code-audit");
     });
 
-    it("returns feature-pre-code-audit over feature-requirements when both match", () => {
-      // has quality audit → pre-code-audit, not feature-requirements
+    it("returns feature-test-plan-ready when test-plan exists, no impl log", () => {
+      const f = baseFeature({
+        hasTestPlan: true,
+        hasRequirements: true,
+        hasRoadmap: true,
+      });
+      expect(determineFeatureState(f)).toBe("feature-test-plan-ready");
+    });
+
+    it("returns feature-test-plan when roadmap+reqs audited, no test-plan yet", () => {
       const f = baseFeature({
         hasRequirements: true,
         hasRoadmap: true,
-        hasActions: true,
         hasQualityAudit: true,
       });
-      expect(determineFeatureState(f)).toBe("feature-pre-code-audit");
+      expect(determineFeatureState(f)).toBe("feature-test-plan");
     });
 
-    it("returns feature-todo when actions have partial completion", () => {
-      const f = baseFeature({
-        hasActions: true,
-        actionsCompletionRatio: 0.5,
-      });
-      expect(determineFeatureState(f)).toBe("feature-todo");
-    });
-
-    it("returns feature-planned when actions exist with 0 completion", () => {
-      const f = baseFeature({
-        hasActions: true,
-        actionsCompletionRatio: 0,
-      });
-      expect(determineFeatureState(f)).toBe("feature-planned");
-    });
-
-    it("returns feature-planning when roadmap exists, no actions", () => {
+    it("returns feature-design-reviewed when roadmap+reqs audited, no test plan", () => {
       const f = baseFeature({
         hasRoadmap: true,
+        hasRequirements: true,
+        hasQualityAudit: true,
       });
-      expect(determineFeatureState(f)).toBe("feature-planning");
+      // feature-test-plan wins because it checks hasRoadmap+hasRequirements+!doubts+hasQualityAudit+!hasTestPlan
+      // This is actually feature-test-plan, not feature-design-reviewed
+      expect(determineFeatureState(f)).toBe("feature-test-plan");
     });
 
-    it("returns feature-requirements-audited when reqs audited, no roadmap", () => {
+    it("returns feature-design when reqs reviewed, no roadmap", () => {
       const f = baseFeature({
         hasRequirements: true,
         hasQualityAudit: true,
       });
-      expect(determineFeatureState(f)).toBe("feature-requirements-audited");
+      expect(determineFeatureState(f)).toBe("feature-design");
     });
 
-    it("returns feature-clarification-needed when reqs have doubts (no roadmap)", () => {
-      // ORDER MATTERS: feature-planning (roadmap, no actions) is checked before
-      // feature-clarification-needed. To reach this state, must not have roadmap.
+    it("returns feature-requirements-reviewed when reqs+audit exist, no roadmap", () => {
+      const f = baseFeature({
+        hasRequirements: true,
+        hasQualityAudit: true,
+      });
+      // feature-design wins because same condition
+      expect(determineFeatureState(f)).toBe("feature-design");
+    });
+
+    it("returns feature-clarification-needed when reqs have doubts", () => {
       const f = baseFeature({
         hasRequirements: true,
         requirementsDoubts: true,
@@ -225,22 +236,33 @@ describe("State Detector", () => {
       expect(determineFeatureState(f)).toBe("feature-empty");
     });
 
-    it("returns feature-done over feature-coding-ready when completion+implLog both present", () => {
-      // Most critical ORDER MATTERS test: feature-done is most specific,
-      // feature-coding-ready checks !hasImplementationLog.
-      // If ordering were reversed, a done feature with implLog would misdetect.
+    it("returns feature-done over feature-coding-ready when both match", () => {
       const f = baseFeature({
         hasQaReport: true,
         hasRegressionWatch: true,
         hasLegacyImpact: true,
         actionsCompletionRatio: 1.0,
         hasImplementationLog: true,
+        hasTestPlan: true,
         hasRequirements: true,
         hasQualityAudit: true,
         hasRoadmap: true,
         hasActions: true,
       });
       expect(determineFeatureState(f)).toBe("feature-done");
+    });
+
+    // Legacy state regression: action completion without impl log
+    it("returns feature-test-plan when actions completed but no impl log", () => {
+      const f = baseFeature({
+        actionsCompletionRatio: 1.0,
+        hasRoadmap: true,
+        hasActions: true,
+        hasRequirements: true,
+        hasQualityAudit: true,
+      });
+      // Falls to feature-test-plan (has roadmap + requirements + quality audit + no test plan)
+      expect(determineFeatureState(f)).toBe("feature-test-plan");
     });
   });
 

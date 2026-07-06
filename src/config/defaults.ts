@@ -16,4 +16,22 @@ export const DEFAULTS: DevflowConfig = {
   features: {
     numberingScheme: "sequential",
   },
+  constitution: {
+    enabled: true,
+    blockingGates: true,
+  },
+  confidenceThresholds: {
+    high: 0.8,
+    medium: 0.5,
+  },
+  deterministicGates: {
+    typecheck: true,
+    lint: true,
+    test: true,
+    coverage: true,
+    circularDeps: true,
+    forbiddenDeps: true,
+    duplication: false,
+    unusedDeps: false,
+  },
 };

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { execSync } from "node:child_process";
 import { ArtifactManager } from "../artifacts/manager.js";
 import { inspectProject } from "../project/inspector.js";
 import { fileExists, listDir } from "../utils/fs.js";
@@ -87,9 +88,37 @@ export async function featureNewCommand(
     "DEVFLOW.md"
   );
 
+  // ── Create Git feature branch ──
+  let branchCreated = false;
+  try {
+    const currentBranch = execSync("git branch --show-current", {
+      cwd: rootPath,
+      encoding: "utf-8",
+    }).trim();
+
+    if (currentBranch === "main" || currentBranch === "master") {
+      execSync(`git checkout -b feature/${featureId}`, {
+        cwd: rootPath,
+        encoding: "utf-8",
+      });
+      branchCreated = true;
+    } else {
+      console.log(
+        pc.yellow(`  ⚠  Not on main/master branch. Skipping branch creation.`)
+      );
+    }
+  } catch {
+    console.log(
+      pc.yellow(`  ⚠  Git branch could not be created (git may not be configured).`)
+    );
+  }
+
   console.log(pc.green("\n✅ Feature created successfully!\n"));
   console.log(pc.bold("Feature:     "), featureId);
   console.log(pc.bold("Directory:   "), featurePath);
+  if (branchCreated) {
+    console.log(pc.bold("Branch:      "), `feature/${featureId}`);
+  }
   console.log();
   console.log(pc.bold("Created files:"));
   console.log(`  ${pc.dim("→")} _devflow/features/${featureId}/requirements.md`);

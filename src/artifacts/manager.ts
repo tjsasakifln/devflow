@@ -124,10 +124,24 @@ export class ArtifactManager {
     await ensureDir(path.join(this.paths.dotDevflow, "decisions"));
     await ensureDir(path.join(this.paths.dotDevflow, "audits"));
     await ensureDir(path.join(this.paths.dotDevflow, "context"));
+    await ensureDir(path.join(this.paths.dotDevflow, "tool-configs"));
     await ensureDir(this.paths.devArtifacts);
     await ensureDir(this.paths.discoveryDir);
     await ensureDir(this.paths.specsDir);
     await ensureDir(this.paths.featureDir);
+
+    // Write constitution.md
+    const constitutionPayload: TemplatePayload = {
+      featureName: path.basename(path.dirname(this.paths.dotDevflow)),
+      featureId: "constitution",
+      timestamp: new Date().toISOString(),
+    };
+    const constitutionContent = renderTemplate("constitution", constitutionPayload);
+    await this.safeWrite(
+      path.join(this.paths.dotDevflow, "constitution.md"),
+      constitutionContent,
+      "constitution.md"
+    );
   }
 
   // ── Utility ──

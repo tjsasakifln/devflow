@@ -3,6 +3,7 @@ import { initCommand } from "./init.js";
 import { statusCommand } from "./status.js";
 import { nextCommand } from "./next.js";
 import { featureNewCommand } from "./feature.js";
+import { featureComplete } from "./feature-complete.js";
 import { doctorCommand } from "./doctor.js";
 import { updateCockpitCommand } from "./update-cockpit.js";
 
@@ -28,24 +29,36 @@ export function registerCommands(program: Command): void {
     .command("next")
     .description("Recommend the next best action")
     .option("--json", "Output as JSON")
+    .option("--force", "Force progression with bypass registration")
     .action(async (options) => {
       await nextCommand(process.cwd(), options);
     });
 
   program
     .command("feature")
-    .description("Manage features")
-    .command("new")
+    .description("Manage features");
+
+  // feature new
+  program
+    .command("feature new <name>")
     .description("Create a new feature workspace")
-    .argument("<name>", "Feature name (slugified automatically)")
     .action(async (name: string) => {
       await featureNewCommand(process.cwd(), name);
+    });
+
+  // feature complete
+  program
+    .command("feature complete <id>")
+    .description("Verify feature completion — runs Definition of Done checks")
+    .action(async (id: string) => {
+      await featureComplete(id, process.cwd());
     });
 
   program
     .command("doctor")
     .description("Diagnose and fix common issues")
     .option("--fix", "Auto-fix detected issues")
+    .option("--dry-run", "Preview changes without applying")
     .action(async (options) => {
       await doctorCommand(process.cwd(), options);
     });

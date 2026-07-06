@@ -153,5 +153,18 @@ function evidenceSupportsState(
     case "blocked":
       // Blocked is determined by explicit blocker markers
       return null;
+
+    // New spec-driven states
+    case "feature-requirements-reviewed":
+    case "feature-design":
+    case "feature-design-reviewed":
+    case "feature-test-plan":
+    case "feature-test-plan-ready":
+    case "feature-verification":
+    case "feature-review":
+      return null;
+
+    default:
+      return null;
   }
 }

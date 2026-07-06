@@ -1,0 +1,72 @@
+name: CI — Devflow Harness
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Deterministic Gates ──
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npx eslint src/ --max-warnings 0
+        continue-on-error: true # non-blocking for now
+
+      - name: Unit tests
+        run: npx vitest run --reporter=verbose
+
+      - name: Coverage
+        run: npx vitest run --coverage --reporter=verbose
+
+      - name: Circular dependency check
+        run: npx madge --circular --extensions ts src/
+        continue-on-error: true
+
+      - name: Forbidden dependency check
+        run: |
+          if [ -f .devflow/dependency-cruiser.constitution.js ]; then
+            npx dependency-cruiser --config .devflow/dependency-cruiser.constitution.js src/
+          else
+            echo "dependency-cruiser config not found (skipped)"
+          fi
+        continue-on-error: true
+
+      - name: TODO/FIXME audit
+        run: |
+          UNLINKED=$(grep -rn "TODO\|FIXME" src/ --include="*.ts" | grep -v "TODO(#" | grep -v "FIXME(#" || true)
+          if [ -n "$UNLINKED" ]; then
+            echo "⚠️  Unlinked TODO/FIXME found:"
+            echo "$UNLINKED"
+          else
+            echo "✅ All TODO/FIXME have ticket references"
+          fi
+
+      - name: Build
+        run: npm run build
+
+      - name: Package audit
+        run: npm audit --audit-level=high
+        continue-on-error: true

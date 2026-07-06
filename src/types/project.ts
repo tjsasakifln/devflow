@@ -13,6 +13,7 @@ export interface FeatureInfo {
   hasRegressionWatch: boolean;
   hasReleaseNotes: boolean;
   hasImplementationLog: boolean;
+  hasTestPlan: boolean;
   requirementsDoubts: boolean;
   actionsCompletionRatio: number;
   isActive: boolean;

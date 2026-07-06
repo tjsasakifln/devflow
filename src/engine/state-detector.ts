@@ -126,12 +126,23 @@ export function determineFeatureState(f: FeatureInfo): DevflowState {
     return "feature-done";
   }
 
-  // Feature validation
+  // Feature review (post-verification, awaiting independent approval)
   if (
     f.actionsCompletionRatio >= 1.0 &&
+    f.hasQaReport &&
+    f.hasTestPlan &&
+    f.hasImplementationLog
+  ) {
+    return "feature-review";
+  }
+
+  // Feature verification (coding done, running deterministic checks)
+  if (
+    f.actionsCompletionRatio >= 1.0 &&
+    f.hasImplementationLog &&
     !f.hasQaReport
   ) {
-    return "feature-validation";
+    return "feature-verification";
   }
 
   // Feature coding in progress
@@ -139,13 +150,14 @@ export function determineFeatureState(f: FeatureInfo): DevflowState {
     return "feature-coding-in-progress";
   }
 
-  // Feature coding ready
+  // Feature coding ready (all gates passed)
   if (
     f.hasRequirements &&
     !f.requirementsDoubts &&
     f.hasQualityAudit &&
     f.hasRoadmap &&
     f.hasActions &&
+    f.hasTestPlan &&
     f.hasLegacyImpact &&
     f.hasRegressionWatch &&
     !f.hasImplementationLog
@@ -158,12 +170,59 @@ export function determineFeatureState(f: FeatureInfo): DevflowState {
     f.hasRequirements &&
     f.hasRoadmap &&
     f.hasActions &&
-    f.hasQualityAudit
+    f.hasQualityAudit &&
+    f.hasTestPlan
   ) {
     return "feature-pre-code-audit";
   }
 
-  // Feature todo (actions exist but not all done)
+  // Feature test plan ready
+  if (f.hasTestPlan && !f.hasImplementationLog) {
+    return "feature-test-plan-ready";
+  }
+
+  // Feature test plan (design reviewed, test planning started)
+  if (
+    f.hasRoadmap &&
+    f.hasRequirements &&
+    !f.requirementsDoubts &&
+    f.hasQualityAudit &&
+    !f.hasTestPlan
+  ) {
+    return "feature-test-plan";
+  }
+
+  // Feature design reviewed
+  if (
+    f.hasRoadmap &&
+    f.hasRequirements &&
+    !f.requirementsDoubts &&
+    f.hasQualityAudit
+  ) {
+    return "feature-design-reviewed";
+  }
+
+  // Feature design (requirements reviewed, design in progress)
+  if (
+    f.hasRequirements &&
+    !f.requirementsDoubts &&
+    f.hasQualityAudit &&
+    !f.hasRoadmap
+  ) {
+    return "feature-design";
+  }
+
+  // Feature requirements reviewed
+  if (
+    f.hasRequirements &&
+    f.hasQualityAudit &&
+    !f.requirementsDoubts &&
+    !f.hasRoadmap
+  ) {
+    return "feature-requirements-reviewed";
+  }
+
+  // Feature todo (actions exist but not all done) — legacy state
   if (
     f.hasActions &&
     f.actionsCompletionRatio > 0 &&
@@ -172,17 +231,17 @@ export function determineFeatureState(f: FeatureInfo): DevflowState {
     return "feature-todo";
   }
 
-  // Feature planned (actions exist)
+  // Feature planned (actions exist) — legacy state
   if (f.hasActions && f.actionsCompletionRatio === 0) {
     return "feature-planned";
   }
 
-  // Feature planning (roadmap exists, no actions)
+  // Feature planning (roadmap exists, no actions) — legacy state
   if (f.hasRoadmap && !f.hasActions) {
     return "feature-planning";
   }
 
-  // Feature requirements audited
+  // Feature requirements audited — legacy state
   if (
     f.hasRequirements &&
     f.hasQualityAudit &&
