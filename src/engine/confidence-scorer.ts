@@ -1,4 +1,75 @@
-import type { ConfidenceLevel, Evidence, DevflowState } from "../types/state.js";
+import type {
+  ConfidenceLevel,
+  FeatureCompletionConfidence,
+  Evidence,
+  DevflowState,
+  CIStatus,
+} from "../types/state.js";
+
+/**
+ * Score feature completion confidence using a conservative 7-level rubric.
+ *
+ * Levels (most → least conservative):
+ *   blocked          — active blockers or CI red
+ *   draft            — requirements exist, no implementation
+ *   review-required  — code complete, no review
+ *   locally-verified — all local deterministic gates pass
+ *   ci-verified      — remote CI workflow reports success
+ *   release-candidate — independent review approved
+ *   complete         — all DoD checks pass, gatekeeper approved
+ *
+ * Default: on any uncertainty, drop one level.
+ */
+export function scoreFeatureCompletionConfidence(params: {
+  hasActiveBlockers: boolean;
+  ciStatuses: CIStatus[];
+  allActionsDone: boolean;
+  localChecksPassing: boolean;
+  ciGreen: boolean;
+  independentReviewDone: boolean;
+  gatekeeperApproved: boolean;
+  dodChecksPassed: number;
+  dodChecksTotal: number;
+}): FeatureCompletionConfidence {
+  const {
+    hasActiveBlockers,
+    ciStatuses,
+    allActionsDone,
+    localChecksPassing,
+    ciGreen,
+    independentReviewDone,
+    gatekeeperApproved,
+    dodChecksPassed,
+    dodChecksTotal,
+  } = params;
+
+  if (hasActiveBlockers || ciStatuses.some((s) => s.conclusion === "failure")) {
+    return "blocked";
+  }
+
+  if (!allActionsDone) {
+    return "draft";
+  }
+
+  // All actions done but no independent review yet
+  if (allActionsDone && !independentReviewDone) {
+    if (localChecksPassing) {
+      return ciGreen ? "ci-verified" : "locally-verified";
+    }
+    return "review-required";
+  }
+
+  // Independent review done
+  if (independentReviewDone && gatekeeperApproved) {
+    if (dodChecksPassed === dodChecksTotal && ciGreen) {
+      return "complete";
+    }
+    return "release-candidate";
+  }
+
+  // Fallback: review-required
+  return "review-required";
+}
 
 export function scoreConfidence(
   evidence: Evidence[],

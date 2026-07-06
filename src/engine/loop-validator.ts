@@ -1,4 +1,5 @@
 import { logger } from "../utils/logger.js";
+import type { GuardCheck } from "../types/guards.js";
 
 export interface LoopSpec {
   goal: string;
@@ -10,6 +11,8 @@ export interface LoopSpec {
   externalCheck: string;
   evidenceLog: string;
   humanDecision: boolean;
+  retryOnFailure?: boolean;
+  rateLimit?: number;
 }
 
 export interface LoopValidationResult {
@@ -57,10 +60,115 @@ export function validateLoopSpec(spec: LoopSpec): LoopValidationResult {
     );
   }
 
+  // Vague loop detection
+  if (
+    spec.goal &&
+    /melhorar\s+(o\s+)?c[oó]digo/i.test(spec.goal) &&
+    !spec.externalCheck
+  ) {
+    errors.push(
+      "Rejected: Loop with vague goal without external check. 'Melhorar o código' is not engineering — specify a metric, limit, and proof."
+    );
+  }
+
   return {
     valid: errors.length === 0,
     errors,
     warnings,
+  };
+}
+
+/**
+ * Scan actions.md for loop patterns (YAML blocks with loop: key).
+ */
+export function scanActionsForLoops(actionsMd: string): LoopSpec[] {
+  const loops: LoopSpec[] = [];
+
+  // Match YAML-style loop blocks in markdown
+  const loopPattern = /```ya?ml\s*\n\s*loop:\s*\n([\s\S]*?)```/g;
+  let match;
+  while ((match = loopPattern.exec(actionsMd)) !== null) {
+    const body = match[1] || "";
+    const spec: Partial<LoopSpec> = {};
+
+    const extractField = (name: string): string | undefined => {
+      const m = body.match(new RegExp(`${name}:\\s*(.+)`, "im"));
+      return m?.[1]?.trim();
+    };
+
+    spec.goal = extractField("goal") || "";
+    spec.input = extractField("input") || "";
+    spec.output = extractField("output") || "";
+    spec.action = extractField("action") || "";
+    spec.stopCondition = extractField("stopCondition") || "";
+    spec.maxIterations = parseInt(extractField("maxIterations") || "0", 10);
+    spec.externalCheck = extractField("externalCheck") || "";
+    spec.evidenceLog = extractField("evidenceLog") || "";
+    spec.humanDecision =
+      extractField("humanDecision")?.toLowerCase() === "true";
+
+    loops.push(spec as LoopSpec);
+  }
+
+  return loops;
+}
+
+/**
+ * Validate all loops found in the feature's actions.md.
+ * Returns a combined validation result.
+ */
+export function validateLoopsInFeature(
+  actionsMd: string
+): LoopValidationResult {
+  const loops = scanActionsForLoops(actionsMd);
+  const allErrors: string[] = [];
+  const allWarnings: string[] = [];
+
+  if (loops.length === 0) {
+    return { valid: true, errors: [], warnings: [] };
+  }
+
+  for (let i = 0; i < loops.length; i++) {
+    const loop = loops[i];
+    if (!loop) continue;
+    const result = validateLoopSpec(loop);
+    if (!result.valid) {
+      allErrors.push(
+        `Loop #${i + 1} (${loop.action}): ${result.errors.join("; ")}`
+      );
+    }
+    allWarnings.push(
+      ...result.warnings.map((w) => `Loop #${i + 1}: ${w}`)
+    );
+  }
+
+  return {
+    valid: allErrors.length === 0,
+    errors: allErrors,
+    warnings: allWarnings,
+  };
+}
+
+/**
+ * Create a pipeline GuardCheck for loop validation.
+ * Returns null if no loops found (not an error — loops are optional).
+ */
+export function integrateIntoPipelineCheck(actionsMd: string): GuardCheck | null {
+  const loops = scanActionsForLoops(actionsMd);
+  if (loops.length === 0) return null;
+
+  const result = validateLoopsInFeature(actionsMd);
+
+  return {
+    checkId: "loop-validation",
+    description: `Validated ${loops.length} agentic loop(s) in actions.md`,
+    passed: result.valid,
+    reason: result.valid
+      ? `All ${loops.length} loop(s) have valid specs with external checks`
+      : result.errors.join("; "),
+    blocking: true,
+    gateNumber: 14,
+    remediation: "Fix loop specs: add goal, stopCondition, maxIterations, and externalCheck to each loop block in actions.md",
   };
 }
 

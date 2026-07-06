@@ -33,5 +33,23 @@ export const DEFAULTS: DevflowConfig = {
     forbiddenDeps: true,
     duplication: false,
     unusedDeps: false,
+    ooMetrics: false,
+    acceptanceCriteria: true,
+    adversarialReview: false,
+  },
+  ciIntegration: {
+    enabled: false,
+    provider: "none",
+    requiredChecks: [],
+    timeoutSeconds: 120,
+  },
+  audit: {
+    enabled: true,
+    autoGenerateOnComplete: true,
+    auditDirectory: ".devflow/audits",
+  },
+  implementerApproverSeparation: {
+    enabled: true,
+    requireDifferentActor: true,
   },
 };

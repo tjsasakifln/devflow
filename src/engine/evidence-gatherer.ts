@@ -89,6 +89,26 @@ export function gatherEvidence(inspection: ProjectInspection): Evidence[] {
   if (inspection.activeFeature) {
     const f = inspection.activeFeature;
     evidence.push(...gatherFeatureEvidence(f));
+
+    // Implementer/approver identity evidence
+    if (f.implementerActor) {
+      evidence.push({
+        type: "file_content",
+        key: "implementer_actor",
+        value: f.implementerActor,
+        source: `_devflow/features/${f.id}/implementation-log.jsonl`,
+        confidence: "high",
+      });
+    }
+    if (f.reviewerActor) {
+      evidence.push({
+        type: "file_content",
+        key: "reviewer_actor",
+        value: f.reviewerActor,
+        source: `_devflow/features/${f.id}/implementation-log.jsonl`,
+        confidence: "high",
+      });
+    }
   }
 
   // Feature count

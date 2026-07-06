@@ -4,6 +4,8 @@ import { statusCommand } from "./status.js";
 import { nextCommand } from "./next.js";
 import { featureNewCommand } from "./feature.js";
 import { featureComplete } from "./feature-complete.js";
+import { gatekeep } from "./gatekeep.js";
+import { adversarialReview } from "./adversarial-review.js";
 import { doctorCommand } from "./doctor.js";
 import { updateCockpitCommand } from "./update-cockpit.js";
 
@@ -42,16 +44,37 @@ export function registerCommands(program: Command): void {
   program
     .command("feature new <name>")
     .description("Create a new feature workspace")
-    .action(async (name: string) => {
-      await featureNewCommand(process.cwd(), name);
+    .option("--actor <actor>", "Identity of the implementer (for role segregation)")
+    .action(async (name: string, options: { actor?: string }) => {
+      await featureNewCommand(process.cwd(), name, options);
     });
 
   // feature complete
   program
     .command("feature complete <id>")
-    .description("Verify feature completion — runs Definition of Done checks")
+    .description("Verify feature completion — runs 25 Definition of Done checks")
     .action(async (id: string) => {
       await featureComplete(id, process.cwd());
+    });
+
+  // gatekeep
+  program
+    .command("gatekeep <featureId>")
+    .description("Independent gatekeeper review — approve or reject feature completion")
+    .option("--approve", "Approve the feature")
+    .option("--reject", "Reject the feature (requires fixes)")
+    .option("--reason <reason>", "Reason for approval or rejection")
+    .option("--actor <actor>", "Gatekeeper identity")
+    .action(async (featureId: string, options: { approve?: boolean; reject?: boolean; reason?: string; actor?: string }) => {
+      await gatekeep(featureId, process.cwd(), options);
+    });
+
+  // adversarial-review
+  program
+    .command("adversarial-review <featureId>")
+    .description("Adversarial review — attempt to reject the feature across 8 attack vectors")
+    .action(async (featureId: string) => {
+      await adversarialReview(featureId, process.cwd());
     });
 
   program

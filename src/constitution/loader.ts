@@ -63,8 +63,20 @@ function parseRuleSection(id: string, body: string): ConstitutionRule | null {
   const lines = body.trim().split("\n");
   const description = lines[0]?.replace(/^\*\*Description:\*\*\s*/, "").trim() || id;
 
+  // Extract metadata fields from body
+  const extractField = (name: string): string | undefined => {
+    const match = body.match(new RegExp(`\\*\\*${name}:\\*\\*\\s*(.+)`, "i"));
+    return match?.[1]?.trim();
+  };
+
   let category: ConstitutionRule["category"] = "quality";
-  if (body.includes("domain") || body.includes("encapsulad") || body.includes("serviço")) {
+  const categoryField = extractField("Category");
+  if (categoryField) {
+    const cat = categoryField.toLowerCase().trim();
+    if (["structure", "architecture", "quality", "process", "security", "domain", "oo-design"].includes(cat)) {
+      category = cat as ConstitutionRule["category"];
+    }
+  } else if (body.includes("domain") || body.includes("encapsulad") || body.includes("serviço")) {
     category = "structure";
   } else if (
     body.includes("interface") ||
@@ -77,6 +89,43 @@ function parseRuleSection(id: string, body: string): ConstitutionRule | null {
   } else if (body.includes("TODO") || body.includes("FIXME")) {
     category = "process";
   }
+
+  // Extract severity
+  let severity: ConstitutionRule["severity"] = "blocking";
+  const severityField = extractField("Severity");
+  if (severityField) {
+    if (severityField.includes("critical") || severityField.includes("crítica") || severityField.includes("🔴") && severityField.includes("critical")) {
+      severity = "critical";
+    } else if (severityField.includes("advisory") || severityField.includes("advertência") || severityField.includes("🟡")) {
+      severity = "advisory";
+    } else {
+      severity = "blocking";
+    }
+  }
+
+  // Extract approval condition
+  let approvalCondition: ConstitutionRule["approvalCondition"] = "auto";
+  const approvalField = extractField("Approval Condition");
+  if (approvalField) {
+    if (approvalField.includes("human-review") || approvalField.includes("human")) {
+      approvalCondition = "human-review";
+    } else if (approvalField.includes("deferred")) {
+      approvalCondition = "deferred";
+    }
+  }
+
+  // Extract human review required
+  let humanReviewRequired = false;
+  const humanReviewField = extractField("Human Review Required");
+  if (humanReviewField) {
+    humanReviewRequired = humanReviewField.toLowerCase() === "true";
+  }
+
+  // Extract refusal message
+  const refusalMessage = extractField("Refusal Message");
+
+  // Determine if blocking based on severity
+  const blocking = severity !== "advisory";
 
   // Extract verification command info
   let verification: ConstitutionRule["verification"] = {
@@ -91,28 +140,28 @@ function parseRuleSection(id: string, body: string): ConstitutionRule | null {
       tool: "dependency-cruiser",
       command: "npx dependency-cruiser --config .devflow/dependency-cruiser.constitution.js src/",
       expectedOutput: "zero" as const,
-      failMessage: `Rule ${id}: Forbidden dependencies detected.`,
+      failMessage: extractField("Refusal Message") || `Rule ${id}: Forbidden dependencies detected.`,
     };
   } else if (body.includes("madge")) {
     verification = {
       tool: "madge",
       command: "npx madge --circular --extensions ts src/",
       expectedOutput: "zero" as const,
-      failMessage: `Rule ${id}: Circular imports detected.`,
+      failMessage: extractField("Refusal Message") || `Rule ${id}: Circular imports detected.`,
     };
   } else if (body.includes("jscpd")) {
     verification = {
       tool: "jscpd",
       command: "npx jscpd src/ --min-lines 5 --min-tokens 50",
       expectedOutput: "zero" as const,
-      failMessage: `Rule ${id}: Code duplication detected.`,
+      failMessage: extractField("Refusal Message") || `Rule ${id}: Code duplication detected.`,
     };
   } else if (body.includes("eslint") || body.includes("lint")) {
     verification = {
       tool: "eslint",
       command: "npx eslint src/ --config .devflow/eslintrc.constitution.json",
       expectedOutput: "pass" as const,
-      failMessage: `Rule ${id}: Lint violations found.`,
+      failMessage: extractField("Refusal Message") || `Rule ${id}: Lint violations found.`,
     };
   } else if (body.includes("cobertura") || body.includes("coverage") || body.includes("80%")) {
     verification = {
@@ -120,21 +169,28 @@ function parseRuleSection(id: string, body: string): ConstitutionRule | null {
       command: "npx vitest run --coverage",
       expectedOutput: "threshold" as const,
       threshold: 80,
-      failMessage: `Rule ${id}: Test coverage below minimum threshold.`,
+      failMessage: extractField("Refusal Message") || `Rule ${id}: Test coverage below minimum threshold.`,
     };
   } else if (body.includes("grep")) {
     verification = {
       tool: "grep",
       command: "grep -r 'TODO\\|FIXME' src/ --include='*.ts' || true",
       expectedOutput: "zero" as const,
-      failMessage: `Rule ${id}: Unresolved TODO/FIXME found.`,
+      failMessage: extractField("Refusal Message") || `Rule ${id}: Unresolved TODO/FIXME found.`,
     };
   }
 
-  // Determine if blocking based on category
-  const blocking = category !== "process" || body.includes("blocking");
-
-  return { id, description, category, verification, blocking };
+  return {
+    id,
+    description,
+    category,
+    verification,
+    blocking,
+    severity,
+    approvalCondition,
+    refusalMessage,
+    humanReviewRequired,
+  };
 }
 
 export function getRuleById(

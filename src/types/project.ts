@@ -17,6 +17,8 @@ export interface FeatureInfo {
   requirementsDoubts: boolean;
   actionsCompletionRatio: number;
   isActive: boolean;
+  implementerActor?: string;
+  reviewerActor?: string;
 }
 
 export interface ProjectInspection {

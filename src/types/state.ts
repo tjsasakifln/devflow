@@ -25,8 +25,10 @@ export type DevflowState =
   | "feature-coding-in-progress"
   // Verification phase
   | "feature-verification"
+  | "feature-ci-verified"
   // Review phase
   | "feature-review"
+  | "feature-adversarial-review"
   // Completion
   | "feature-done"
   // Legacy states (kept for backward compat)
@@ -41,6 +43,25 @@ export type DevflowState =
 
 export type ConfidenceLevel = "high" | "medium" | "low";
 
+export type FeatureCompletionConfidence =
+  | "blocked"
+  | "draft"
+  | "review-required"
+  | "locally-verified"
+  | "ci-verified"
+  | "release-candidate"
+  | "complete";
+
+export interface CIStatus {
+  workflow: string;
+  conclusion: "success" | "failure" | "skipped" | "cancelled" | "pending" | null;
+  runId: number | null;
+  htmlUrl: string | null;
+  headSha: string | null;
+  timestamp: string;
+  branch: string;
+}
+
 export interface Evidence {
   type: string;
   key: string;
@@ -52,6 +73,7 @@ export interface Evidence {
 export interface StateDetectionResult {
   currentState: DevflowState;
   confidence: ConfidenceLevel;
+  featureCompletionConfidence?: FeatureCompletionConfidence;
   evidence: Evidence[];
   knownFacts: string[];
   assumptions: string[];

@@ -19,8 +19,10 @@ export const TRANSITION_TABLE: Record<DevflowState, DevflowState[]> = {
   "feature-design-reviewed": ["feature-test-plan"],
   "feature-test-plan": ["feature-test-plan-ready"],
   "feature-test-plan-ready": ["feature-pre-code-audit"],
-  "feature-verification": ["feature-review", "feature-coding-in-progress"],
-  "feature-review": ["feature-done", "feature-coding-in-progress"],
+  "feature-verification": ["feature-ci-verified", "feature-review", "feature-coding-in-progress"],
+  "feature-ci-verified": ["feature-review"],
+  "feature-review": ["feature-adversarial-review", "feature-done", "feature-coding-in-progress"],
+  "feature-adversarial-review": ["feature-done", "feature-coding-in-progress"],
   // Legacy states (kept for backward compatibility)
   "feature-clarification-needed": [
     "feature-requirements-reviewed",
@@ -301,7 +303,7 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
   },
   "feature-verification": {
     sourceState: "feature-verification",
-    targetStates: ["feature-review", "feature-coding-in-progress"],
+    targetStates: ["feature-ci-verified", "feature-review", "feature-coding-in-progress"],
     primaryAction: {
       id: "run-verification",
       description: "Run deterministic verification suite: tests, typecheck, lint, coverage, circular deps, forbidden deps, constitution check",
@@ -314,9 +316,24 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
       { description: "Fix failing checks and re-verify", whenToChoose: "Verification revealed issues" },
     ],
   },
+  "feature-ci-verified": {
+    sourceState: "feature-ci-verified",
+    targetStates: ["feature-review"],
+    primaryAction: {
+      id: "ci-verified",
+      description: "CI verification complete — remote pipeline confirms all checks pass. Proceed to independent review.",
+      why: "CI serves as external source of truth. Remote verification confirms that what passes locally also passes on a clean environment.",
+      agentOrWorkflow: "gatekeeper",
+      writes: [],
+      reads: ["CI workflow run", "qa-report.md"],
+    },
+    alternativeActions: [
+      { description: "Check CI logs for details", whenToChoose: "Understanding CI results" },
+    ],
+  },
   "feature-review": {
     sourceState: "feature-review",
-    targetStates: ["feature-done", "feature-coding-in-progress"],
+    targetStates: ["feature-adversarial-review", "feature-done", "feature-coding-in-progress"],
     primaryAction: {
       id: "independent-review",
       description: "Submit feature for independent review — gatekeeper verifies all checks passed and approves completion",
@@ -327,6 +344,21 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
     },
     alternativeActions: [
       { description: "Return to coding for fixes", whenToChoose: "Review found issues that need code changes" },
+    ],
+  },
+  "feature-adversarial-review": {
+    sourceState: "feature-adversarial-review",
+    targetStates: ["feature-done", "feature-coding-in-progress"],
+    primaryAction: {
+      id: "adversarial-review",
+      description: "Adversarial reviewer attempts to break the feature — seeks hidden coupling, weak tests, abstraction failures, uncovered behavior",
+      why: "Standard review looks for correctness. Adversarial review looks for failure modes. Both are required before completion.",
+      agentOrWorkflow: "adversarial-reviewer",
+      writes: [".devflow/audits/adversarial-review.md"],
+      reads: ["<source files>", "requirements.md", "roadmap.md", "test-plan.md"],
+    },
+    alternativeActions: [
+      { description: "Return to coding for fixes", whenToChoose: "Adversarial review found critical issues" },
     ],
   },
   "feature-clarification-needed": {

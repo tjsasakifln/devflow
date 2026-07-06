@@ -4,6 +4,7 @@ import type {
   ConstitutionCheckResult,
   ConstitutionReport,
   ConstitutionRule,
+  ConstitutionComplianceResult,
 } from "../types/constitution.js";
 
 export async function runConstitutionCheck(
@@ -26,12 +27,24 @@ export async function runConstitutionCheck(
   for (const [tool, rules] of byTool) {
     if (tool === "manual" || tool === "N/A") {
       for (const rule of rules) {
-        results.push({
-          ruleId: rule.id,
-          passed: true,
-          evidence: `Manual check required for: ${rule.description}`,
-          severity: "warn",
-        });
+        // Rules requiring human review that are "manual" → treat as failed
+        // unless human review has been provided
+        if (rule.humanReviewRequired) {
+          results.push({
+            ruleId: rule.id,
+            passed: false,
+            evidence: `Human review required: ${rule.description}. This rule cannot be auto-approved.`,
+            severity: rule.severity === "critical" ? "error" : "warn",
+            humanReviewRequired: true,
+          });
+        } else {
+          results.push({
+            ruleId: rule.id,
+            passed: true,
+            evidence: `Manual check required for: ${rule.description}`,
+            severity: "warn",
+          });
+        }
       }
       continue;
     }
@@ -60,20 +73,34 @@ export async function runConstitutionCheck(
             const coverage = parseFloat(coverageMatch[1]);
             passed = coverage >= rule.verification.threshold;
           } else {
-            passed = true;
+            // Try parsing a plain number (for grep -c output)
+            const numMatch = output.trim().match(/^(\d+)$/);
+            if (numMatch && numMatch[1]) {
+              passed = parseInt(numMatch[1], 10) >= rule.verification.threshold;
+            } else {
+              passed = true;
+            }
           }
         } else {
           passed = true;
         }
+
+        // Determine severity based on rule.severity (new field) with fallback to rule.blocking
+        const resultSeverity = passed
+          ? "pass"
+          : rule.severity === "critical" || rule.severity === "blocking"
+          ? "error"
+          : "warn";
 
         results.push({
           ruleId: rule.id,
           passed,
           evidence: passed
             ? `${rule.id} passed`
-            : rule.verification.failMessage,
-          severity: passed ? "pass" : rule.blocking ? "error" : "warn",
+            : rule.refusalMessage || rule.verification.failMessage,
+          severity: resultSeverity,
           toolOutput: output.slice(0, 500),
+          humanReviewRequired: rule.humanReviewRequired || undefined,
         });
       } catch (err) {
         const errMsg =
@@ -94,14 +121,22 @@ export async function runConstitutionCheck(
 
         const passed = isZeroExpected ? isGrepNoMatch || stderr.trim() === "" : !isExpectedFailure;
 
+        // Tool execution error on a blocking rule → fail, not skip
+        const resultSeverity = passed
+          ? "pass"
+          : rule.severity === "critical" || rule.severity === "blocking" || rule.blocking
+          ? "error"
+          : "warn";
+
         results.push({
           ruleId: rule.id,
           passed,
           evidence: passed
             ? `${rule.id} passed`
-            : rule.verification.failMessage,
-          severity: rule.blocking ? "error" : "warn",
+            : rule.refusalMessage || rule.verification.failMessage,
+          severity: resultSeverity,
           toolOutput: (stderr || errMsg).slice(0, 500),
+          humanReviewRequired: rule.humanReviewRequired || undefined,
         });
       }
     }
@@ -113,6 +148,8 @@ export async function runConstitutionCheck(
     failed: results.filter((r) => !r.passed).length,
     warnings: results.filter((r) => r.severity === "warn").length,
     errors: results.filter((r) => r.severity === "error").length,
+    criticalFailures: results.filter((r) => r.severity === "error" && !r.passed).length,
+    humanReviewsNeeded: results.filter((r) => r.humanReviewRequired).length,
   };
 
   return {
@@ -128,4 +165,20 @@ export function isConstitutionCompliant(report: ConstitutionReport): boolean {
   return report.results
     .filter((r) => r.severity === "error")
     .every((r) => r.passed);
+}
+
+export function getConstitutionCompliance(report: ConstitutionReport): ConstitutionComplianceResult {
+  const criticalFailures = report.results
+    .filter((r) => r.severity === "error" && !r.passed)
+    .map((r) => `${r.ruleId}: ${r.evidence}`);
+
+  const humanReviewsNeeded = report.results
+    .filter((r) => r.humanReviewRequired && !r.passed)
+    .map((r) => `${r.ruleId}: ${r.evidence}`);
+
+  return {
+    compliant: criticalFailures.length === 0,
+    criticalFailures,
+    humanReviewsNeeded,
+  };
 }

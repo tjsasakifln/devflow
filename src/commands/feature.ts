@@ -7,7 +7,8 @@ import pc from "picocolors";
 
 export async function featureNewCommand(
   cwd: string,
-  featureName: string
+  featureName: string,
+  options?: { actor?: string }
 ): Promise<void> {
   const rootPath = path.resolve(cwd);
 
@@ -56,11 +57,13 @@ export async function featureNewCommand(
 
   // Update active feature
   const now = new Date().toISOString();
+  const actor = options?.actor || process.env.DEVFLOW_ACTOR || process.env.USER || undefined;
   await manager.writeActiveFeature({
     featureId,
     featureName,
     startedAt: now,
     updatedAt: now,
+    implementerActor: actor,
   });
 
   // Update state

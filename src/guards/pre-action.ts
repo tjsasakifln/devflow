@@ -1,6 +1,17 @@
 import type { GuardCheck, GuardResult } from "../types/guards.js";
 import type { FeatureInfo, ProjectInspection } from "../types/project.js";
 
+function mkCheck(
+  checkId: string,
+  description: string,
+  passed: boolean,
+  reason: string,
+  blocking: boolean,
+  remediation: string,
+): GuardCheck {
+  return { checkId, description, passed, reason, blocking, gateNumber: 0, remediation };
+}
+
 export function checkPreActionGuard(
   feature: FeatureInfo,
   inspection: ProjectInspection,
@@ -9,62 +20,74 @@ export function checkPreActionGuard(
   const checks: GuardCheck[] = [];
 
   // Check: feature is in a coding-ready or later state
-  checks.push({
-    checkId: "feature-ready",
-    description: "Feature is in a coding-ready state",
-    passed: true, // state detection handles this
-    reason: "Feature state allows coding actions",
-  });
+  checks.push(mkCheck(
+    "feature-ready",
+    "Feature is in a coding-ready state",
+    true,
+    "Feature state allows coding actions",
+    true,
+    "Ensure feature is in coding-ready state (all artifacts complete)",
+  ));
 
   // Check: actions file has the target action
-  checks.push({
-    checkId: "action-exists",
-    description: `Action ${actionId} exists in actions.md`,
-    passed: feature.hasActions,
-    reason: feature.hasActions
+  checks.push(mkCheck(
+    "action-exists",
+    `Action ${actionId} exists in actions.md`,
+    feature.hasActions,
+    feature.hasActions
       ? `Actions file exists — action ${actionId} should be defined`
       : "No actions.md — actions must be defined before execution",
-  });
+    true,
+    "Create actions.md with atomic tasks before executing",
+  ));
 
   // Check: git is clean for high-risk actions
   if (inspection.gitStatus === "dirty") {
-    checks.push({
-      checkId: "git-clean",
-      description: "Working directory is clean",
-      passed: false,
-      reason:
-        "Uncommitted changes exist — commit or stash before executing actions",
-    });
+    checks.push(mkCheck(
+      "git-clean",
+      "Working directory is clean",
+      false,
+      "Uncommitted changes exist — commit or stash before executing actions",
+      true,
+      "Run `git stash` or `git commit` to clean working directory",
+    ));
   } else {
-    checks.push({
-      checkId: "git-clean",
-      description: "Working directory is clean",
-      passed: true,
-      reason: "Git working directory is clean",
-    });
+    checks.push(mkCheck(
+      "git-clean",
+      "Working directory is clean",
+      true,
+      "Git working directory is clean",
+      true,
+      "N/A",
+    ));
   }
 
   // Check: no active drift
-  checks.push({
-    checkId: "no-drift",
-    description: "No code-spec drift detected",
-    passed: inspection.gitStatus !== "dirty",
-    reason:
-      inspection.gitStatus === "dirty"
-        ? "Drift risk: uncommitted changes may conflict with specs"
-        : "No drift detected",
-  });
+  checks.push(mkCheck(
+    "no-drift",
+    "No code-spec drift detected",
+    inspection.gitStatus !== "dirty",
+    inspection.gitStatus === "dirty"
+      ? "Drift risk: uncommitted changes may conflict with specs"
+      : "No drift detected",
+    true,
+    "Reconcile drift: compare code against specs and update one or the other",
+  ));
 
   const failed = checks.filter((c) => !c.passed);
+  const blockingFailed = failed.filter((c) => c.blocking).length;
+  const advisoryFailed = failed.filter((c) => !c.blocking).length;
 
   return {
-    canProceed: failed.length === 0,
+    canProceed: blockingFailed === 0,
     checks,
     refusalMessage:
       failed.length > 0
         ? `Cannot execute action ${actionId}. Pre-action checks failed:\n` +
           failed.map((c) => `- ${c.checkId}: ${c.reason}`).join("\n")
         : null,
-    requiredActions: failed.map((c) => c.reason),
+    requiredActions: failed.map((c) => c.remediation),
+    blockingFailed,
+    advisoryFailed,
   };
 }

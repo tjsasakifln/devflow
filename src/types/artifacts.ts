@@ -10,7 +10,9 @@ export type TemplateId =
   | "investigation"
   | "data-delta"
   | "constitution"
-  | "test-plan";
+  | "test-plan"
+  | "engineering-review"
+  | "release-audit";
 
 export interface TemplatePayload {
   featureName: string;
@@ -37,6 +39,8 @@ export interface ActiveFeatureData {
   featureName: string;
   startedAt: string;
   updatedAt: string;
+  implementerActor?: string;
+  reviewerActor?: string;
 }
 
 export interface StateData {
@@ -81,6 +85,24 @@ export interface DevflowConfig {
     forbiddenDeps: boolean;
     duplication: boolean;
     unusedDeps: boolean;
+    ooMetrics: boolean;
+    acceptanceCriteria: boolean;
+    adversarialReview: boolean;
+  };
+  ciIntegration: {
+    enabled: boolean;
+    provider: "github-actions" | "gitlab-ci" | "circle-ci" | "none";
+    requiredChecks: string[];
+    timeoutSeconds: number;
+  };
+  audit: {
+    enabled: boolean;
+    autoGenerateOnComplete: boolean;
+    auditDirectory: string;
+  };
+  implementerApproverSeparation: {
+    enabled: boolean;
+    requireDifferentActor: boolean;
   };
 }
 
@@ -91,4 +113,29 @@ export interface LogEntry {
   filesChanged: string[];
   status: "started" | "completed" | "failed" | "rolled-back";
   notes: string;
+  actor?: string;
+}
+
+export interface ReviewEntry {
+  timestamp: string;
+  reviewer: string;
+  implementer: string;
+  featureId: string;
+  verdict: "approved" | "rejected" | "changes-requested";
+  reason: string;
+  checksPerformed: string[];
+  attackVectors: string[];
+  evidenceRefs: string[];
+}
+
+export interface GatekeepEntry {
+  timestamp: string;
+  gatekeeper: string;
+  implementer: string;
+  featureId: string;
+  decision: "approved" | "rejected";
+  reason: string;
+  dodChecksPassed: number;
+  dodChecksTotal: number;
+  ciStatus: string;
 }

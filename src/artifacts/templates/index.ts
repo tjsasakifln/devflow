@@ -14,6 +14,53 @@ import { testPlanTemplate } from "./test-plan.js";
 
 type TemplateFn = (payload: TemplatePayload) => string;
 
+// Stub templates — full implementation in Phase 4
+function engineeringReviewStub(payload: TemplatePayload): string {
+  return `# Engineering Review — ${payload.featureName}
+
+> **Feature:** ${payload.featureId}
+> **Generated:** ${payload.timestamp}
+
+## State & Confidence
+*(To be populated by audit generator)*
+
+## Constitution Check Summary
+*(To be populated by audit generator)*
+
+## Pipeline Gate Results
+*(To be populated by audit generator)*
+
+## OO Quality Metrics
+*(To be populated by audit generator)*
+
+## Risk Assessment
+*(To be populated by audit generator)*
+`;
+}
+
+function releaseAuditStub(payload: TemplatePayload): string {
+  return `# Release Audit — ${payload.featureName}
+
+> **Feature:** ${payload.featureId}
+> **Generated:** ${payload.timestamp}
+
+## Definition of Done Matrix
+*(To be populated by audit generator)*
+
+## CI Verification
+*(To be populated by audit generator)*
+
+## Constitution Compliance Certificate
+*(To be populated by audit generator)*
+
+## Coverage Report Summary
+*(To be populated by audit generator)*
+
+## Gatekeeper Sign-Off
+*(To be populated by audit generator)*
+`;
+}
+
 const templateRegistry: Record<TemplateId, TemplateFn> = {
   requirements: requirementsTemplate,
   clarification: clarificationTemplate,
@@ -27,6 +74,8 @@ const templateRegistry: Record<TemplateId, TemplateFn> = {
   "data-delta": dataDeltaTemplate,
   constitution: constitutionTemplate,
   "test-plan": testPlanTemplate,
+  "engineering-review": engineeringReviewStub,
+  "release-audit": releaseAuditStub,
 };
 
 export function renderTemplate(id: TemplateId, payload: TemplatePayload): string {
