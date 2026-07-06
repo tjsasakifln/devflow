@@ -13,6 +13,32 @@ import { indexProject } from "./index-project.js";
 import { runEvals } from "./eval-run.js";
 import pc from "picocolors";
 
+/**
+ * Render a structured preview stub for commands not yet implemented.
+ * No "Would generate..." — either it runs or it declares itself as preview.
+ */
+function renderPreviewStub(
+  commandName: string,
+  description: string,
+  expectedIn: string,
+  alternative: string,
+): void {
+  const width = 62;
+  const border = pc.dim("─".repeat(width));
+
+  console.log("");
+  console.log(`┌${border}┐`);
+  console.log(`│ ${pc.bold("[PREVIEW] Command Not Yet Implemented")}${" ".repeat(width - 40)}│`);
+  console.log(`│${" ".repeat(width + 2)}│`);
+  console.log(`│ ${pc.cyan("Command:")}   ${commandName}${" ".repeat(Math.max(1, width - commandName.length - 11))}│`);
+  console.log(`│ ${pc.cyan("Purpose:")}   ${description}${" ".repeat(Math.max(1, width - description.length - 11))}│`);
+  console.log(`│ ${pc.cyan("Expected:")}  ${expectedIn}${" ".repeat(Math.max(1, width - expectedIn.length - 11))}│`);
+  console.log(`│${" ".repeat(width + 2)}│`);
+  console.log(`│ ${pc.yellow("Alternative:")} ${alternative}${" ".repeat(Math.max(1, width - alternative.length - 14))}│`);
+  console.log(`└${border}┘`);
+  console.log("");
+}
+
 export function registerCommands(program: Command): void {
   program
     .command("init")
@@ -33,9 +59,10 @@ export function registerCommands(program: Command): void {
 
   program
     .command("next")
-    .description("Recommend the next best action")
+    .description("Recommend the next best action — your process copilot")
     .option("--json", "Output as JSON")
     .option("--force", "Force progression with bypass registration")
+    .option("--diagnose", "Deep artifact analysis (detects weak sections, missing files)")
     .action(async (options) => {
       await nextCommand(process.cwd(), options);
     });
@@ -48,7 +75,8 @@ export function registerCommands(program: Command): void {
     .command("new <name>")
     .description("Create a new feature workspace")
     .option("--actor <actor>", "Identity of the implementer (for role segregation)")
-    .action(async (name: string, options: { actor?: string }) => {
+    .option("--non-interactive", "Skip interactive prompts (use template directly)")
+    .action(async (name: string, options: { actor?: string; nonInteractive?: boolean }) => {
       await featureNewCommand(process.cwd(), name, options);
     });
 
@@ -95,24 +123,26 @@ export function registerCommands(program: Command): void {
       await updateCockpitCommand(process.cwd());
     });
 
-  // ── AI Commands (Phase 6-7) ──
+  // ── AI Commands [PREVIEW] ──
 
   const aiCmd = program
     .command("ai")
-    .description("AI-assisted operations (requires provider configuration)");
+    .description("[PREVIEW] AI-assisted operations (requires provider configuration)");
 
   aiCmd
     .command("init")
-    .description("Configure AI provider and usage policy")
+    .description("[PREVIEW] Configure AI provider and usage policy")
     .option("--provider <provider>", "Model provider: openai, anthropic, openrouter, google, ollama")
     .option("--model <model>", "Model name")
     .action(async (options) => {
-      console.log(pc.bold("Devflow AI Configuration"));
-      console.log(`Provider: ${options.provider ?? "ollama"}`);
-      console.log(`Model: ${options.model ?? "llama3.2"}`);
-      console.log("");
-      console.log("AI configuration stored in .devflow/ai/config.json");
-      console.log("Set API key via environment variable (e.g., OPENAI_API_KEY).");
+      renderPreviewStub(
+        "devflow ai init",
+        "AI provider configuration",
+        "Phase 3 of Devflow roadmap",
+        "Set environment variables manually: OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.",
+      );
+      console.log(pc.dim(`  Provider: ${options.provider ?? "ollama"} (not persisted)`));
+      console.log(pc.dim(`  Model: ${options.model ?? "llama3.2"} (not persisted)`));
     });
 
   // ── Indexing ──
@@ -125,137 +155,173 @@ export function registerCommands(program: Command): void {
       await indexProject(process.cwd());
     });
 
-  // ── Discovery ──
+  // ── Discovery [EXPERIMENTAL] ──
 
   program
     .command("discover")
-    .description("Discover and document brownfield project")
+    .description("[EXPERIMENTAL] Discover and document brownfield project")
     .option("--ai", "Use AI-assisted discovery")
     .action(async (options) => {
       if (options.ai) {
-        console.log(pc.yellow("AI-assisted discovery requires 'devflow ai init' first."));
-        console.log("Run: devflow ai init --provider openai");
+        renderPreviewStub(
+          "devflow discover --ai",
+          "AI-assisted brownfield discovery",
+          "Phase 3 of Devflow roadmap",
+          "Use devflow discover (without --ai) for structural discovery.",
+        );
       } else {
         console.log("Running structural discovery...");
         await indexProject(process.cwd());
       }
     });
 
-  // ── Requirements Audit ──
+  // ── Requirements Audit [PREVIEW] ──
 
   program
     .command("requirements audit <featureId>")
-    .description("Audit requirements completeness and quality")
+    .description("[PREVIEW] Audit requirements completeness and quality")
     .option("--ai", "Use AI-assisted audit")
     .action(async (featureId: string, options) => {
       if (options.ai) {
-        console.log(pc.yellow("AI audit requires 'devflow ai init' first."));
-        console.log(`Would audit requirements for feature: ${featureId}`);
+        renderPreviewStub(
+          `devflow requirements audit ${featureId} --ai`,
+          "AI-assisted requirements audit",
+          "Phase 3 of Devflow roadmap",
+          "Manually review _devflow/features/<id>/requirements.md against the pedagogical template criteria.",
+        );
       } else {
         console.log(`Auditing requirements for ${featureId}...`);
-        console.log("Run with --ai for semantic analysis.");
+        console.log("Run with --ai for semantic analysis (when available).");
       }
     });
 
-  // ── Design Review ──
+  // ── Design Review [PREVIEW] ──
 
   program
     .command("design review <featureId>")
-    .description("Review architectural design")
+    .description("[PREVIEW] Review architectural design")
     .option("--ai", "Use AI-assisted review")
     .action(async (featureId: string, options) => {
       if (options.ai) {
-        console.log(pc.yellow("AI review requires 'devflow ai init' first."));
-        console.log(`Would review design for feature: ${featureId}`);
+        renderPreviewStub(
+          `devflow design review ${featureId} --ai`,
+          "AI-assisted design review",
+          "Phase 3 of Devflow roadmap",
+          "Manually review _devflow/features/<id>/roadmap.md for architectural soundness.",
+        );
       } else {
         console.log(`Reviewing design for ${featureId}...`);
-        console.log("Run with --ai for semantic analysis.");
+        console.log("Run with --ai for semantic analysis (when available).");
       }
     });
 
-  // ── Tests Review ──
+  // ── Tests Review [PREVIEW] ──
 
   program
     .command("tests review <featureId>")
-    .description("Review test plan completeness")
+    .description("[PREVIEW] Review test plan completeness")
     .option("--ai", "Use AI-assisted review")
     .action(async (featureId: string, options) => {
       if (options.ai) {
-        console.log(pc.yellow("AI review requires 'devflow ai init' first."));
-        console.log(`Would review tests for feature: ${featureId}`);
+        renderPreviewStub(
+          `devflow tests review ${featureId} --ai`,
+          "AI-assisted test review",
+          "Phase 3 of Devflow roadmap",
+          "Manually review _devflow/features/<id>/test-plan.md for coverage gaps.",
+        );
       } else {
         console.log(`Reviewing tests for ${featureId}...`);
-        console.log("Run with --ai for semantic analysis.");
+        console.log("Run with --ai for semantic analysis (when available).");
       }
     });
 
-  // ── Actions Generate ──
+  // ── Actions Generate [PREVIEW] ──
 
   program
     .command("actions generate <featureId>")
-    .description("Generate actions.md from design documents")
+    .description("[PREVIEW] Generate actions.md from design documents")
     .option("--ai", "Use AI-assisted generation")
     .action(async (featureId: string, options) => {
       if (options.ai) {
-        console.log(pc.yellow("AI generation requires 'devflow ai init' first."));
-        console.log(`Would generate actions for feature: ${featureId}`);
+        renderPreviewStub(
+          `devflow actions generate ${featureId} --ai`,
+          "AI-assisted actions generation",
+          "Phase 3 of Devflow roadmap",
+          "Use the actions template: _devflow/features/<id>/actions.md",
+        );
       } else {
-        console.log(pc.yellow("Use --ai flag to generate actions with AI assistance."));
+        console.log(pc.yellow("Use --ai flag to generate actions with AI assistance (when available)."));
       }
     });
 
-  // ── Drift Check ──
+  // ── Drift Check [PREVIEW] ──
 
   program
     .command("drift check <featureId>")
-    .description("Check code-spec divergence")
+    .description("[PREVIEW] Check code-spec divergence")
     .option("--semantic", "Use semantic analysis for deeper drift detection")
     .action(async (featureId: string, options) => {
       if (options.semantic) {
-        console.log(pc.yellow("Semantic drift check requires 'devflow ai init' first."));
+        renderPreviewStub(
+          `devflow drift check ${featureId} --semantic`,
+          "Semantic drift detection",
+          "Phase 3 of Devflow roadmap",
+          "Compare requirements.md acceptance criteria against implementation-log.jsonl manually.",
+        );
+      } else {
+        console.log(`Checking drift for feature: ${featureId}`);
+        console.log("Run with --semantic for AI-powered analysis (when available).");
       }
-      console.log(`Checking drift for feature: ${featureId}`);
-      console.log("Run with --semantic for AI-powered analysis.");
     });
 
-  // ── AI Adversarial Review (extends existing command) ──
+  // ── AI Adversarial Review [PREVIEW] ──
 
   program
     .command("adversarial-review-ai <featureId>")
-    .description("AI-powered adversarial review — uses LangGraph pipeline")
+    .description("[PREVIEW] AI-powered adversarial review — uses LangGraph pipeline")
     .action(async (featureId: string) => {
-      console.log(pc.yellow("AI adversarial review requires 'devflow ai init' first."));
-      console.log(`Would run AI-powered adversarial review for: ${featureId}`);
-      console.log("Use 'devflow adversarial-review' for deterministic review.");
+      renderPreviewStub(
+        `devflow adversarial-review-ai ${featureId}`,
+        "AI-powered adversarial review (LangGraph pipeline)",
+        "Phase 3 of Devflow roadmap",
+        "Use 'devflow adversarial-review' for deterministic review (12 attack vectors, fully implemented).",
+      );
     });
 
-  // ── Eval ──
+  // ── Eval [EXPERIMENTAL] ──
 
   program
     .command("eval run")
-    .description("Run evaluation suite and generate report")
+    .description("[EXPERIMENTAL] Run evaluation suite and generate report")
     .action(async () => {
       await runEvals(process.cwd());
     });
 
-  // ── Trace ──
+  // ── Trace [PREVIEW] ──
 
   program
     .command("trace <runId>")
-    .description("Trace AI pipeline execution")
+    .description("[PREVIEW] Trace AI pipeline execution")
     .action(async (runId: string) => {
-      console.log(`Tracing AI pipeline run: ${runId}`);
-      console.log("Run artifacts located in .devflow/ai/runs/");
+      renderPreviewStub(
+        `devflow trace ${runId}`,
+        "AI pipeline trace",
+        "Phase 3 of Devflow roadmap",
+        "Run artifacts will be stored in .devflow/ai/runs/ when available.",
+      );
     });
 
-  // ── Promote ──
+  // ── Promote [PREVIEW] ──
 
   program
     .command("promote <proposalId>")
-    .description("Promote AI-generated proposal to official feature artifact")
+    .description("[PREVIEW] Promote AI-generated proposal to official feature artifact")
     .action(async (proposalId: string) => {
-      console.log(pc.bold(`Promoting proposal: ${proposalId}`));
-      console.log("This moves AI-generated artifacts from .devflow/ai/runs/ to _devflow/features/.");
-      console.log(pc.yellow("Promotion requires gatekeeper approval. Run 'devflow gatekeep <id> --approve'."));
+      renderPreviewStub(
+        `devflow promote ${proposalId}`,
+        "AI proposal promotion",
+        "Phase 3 of Devflow roadmap",
+        "Manually copy artifacts from .devflow/ai/runs/ to _devflow/features/.",
+      );
     });
 }

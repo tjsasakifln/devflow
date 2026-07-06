@@ -158,7 +158,9 @@ function validateSections(
       /^\s*-\s*$/.test(sectionContent) ||
       sectionContent === "-" ||
       sectionContent === "- <!--" ||
-      /^<!--\s*-->$/m.test(sectionContent);
+      /^<!--\s*-->$/m.test(sectionContent) ||
+      // Multi-line HTML-comment-only content (pedagogical + placeholder comments)
+      /^\s*(<!--[\s\S]*?-->\s*)+$/.test(sectionContent);
 
     if (isEmpty) {
       emptySections.push(section);

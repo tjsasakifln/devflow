@@ -201,7 +201,9 @@ export async function initCommand(cwd: string): Promise<void> {
     console.log(pc.bold("Detected state: ") + pc.cyan(stateResult.currentState));
     console.log(pc.bold("Confidence:     ") + stateResult.confidence);
     console.log();
-    console.log("Next: run " + pc.bold("devflow next") + " to see the recommended action.\n");
+
+    // ── Onboarding Roadmap ──
+    await showOnboardingRoadmap(inspection, stateResult);
   } catch (err) {
     // ── Rollback: remove created paths in reverse order ──
     console.error(
@@ -234,4 +236,119 @@ export async function initCommand(cwd: string): Promise<void> {
     console.log();
     process.exit(1);
   }
+}
+
+/**
+ * Show a contextual onboarding roadmap after successful init.
+ * Detects greenfield vs brownfield and provides stack-specific guidance.
+ */
+async function showOnboardingRoadmap(
+  inspection: any,
+  _stateResult: any,
+): Promise<void> {
+  const isBrownfield = inspection.fileCount > 10;
+  const stackProfile = inspection.stackProfile;
+  const language = stackProfile?.language || inspection.language || "unknown";
+
+  console.log(pc.bold("━━━ Onboarding Roadmap ━━━\n"));
+
+  // Detect project type
+  if (isBrownfield) {
+    console.log(pc.yellow("🏗️  Brownfield Project Detected"));
+    console.log(pc.dim(`   ${inspection.fileCount}+ files, existing codebase\n`));
+    console.log(pc.cyan("  Before asking AI to code:"));
+    console.log(`    ${pc.bold("1.")} Run ${pc.bold("devflow discover")} to map existing architecture`);
+    console.log(`    ${pc.bold("2.")} Review ${pc.dim("_devflow/discovery/")} reports`);
+    console.log(`    ${pc.bold("3.")} Identify high-risk areas before making changes`);
+    console.log(`    ${pc.bold("4.")} Run ${pc.bold("devflow feature new <name>")} for your first feature`);
+    console.log();
+    console.log(
+      pc.yellow("  ⚠️  Don't implement anything before understanding the existing coupling patterns.")
+    );
+  } else {
+    console.log(pc.green("🌱 Greenfield Project Detected"));
+    console.log(pc.dim("   Clean start or minimal code\n"));
+    console.log(pc.cyan("  Before asking AI to code:"));
+    console.log(`    ${pc.bold("1.")} Document your architecture vision in ${pc.dim("_devflow/specs/")}`);
+    console.log(`    ${pc.bold("2.")} Start with ${pc.bold("devflow feature new <name>")}`);
+    console.log(`    ${pc.bold("3.")} Write requirements following the pedagogical template`);
+    console.log(`    ${pc.bold("4.")} Always complete requirements before writing code`);
+    console.log();
+    console.log(
+      pc.yellow("  ⚠️  Don't skip the requirements phase — AI without spec produces fragile code.")
+    );
+  }
+
+  // Stack-specific advice
+  console.log(pc.cyan("  Stack-specific tooling:"));
+  if (language === "typescript" || language === "javascript") {
+    console.log(
+      `    ${pc.dim("•")} Tests: ${pc.bold(stackProfile?.testCommand || "npx vitest run")}`
+    );
+    console.log(
+      `    ${pc.dim("•")} Typecheck: ${pc.bold(stackProfile?.typeCheckCommand || "npx tsc --noEmit")}`
+    );
+    console.log(
+      `    ${pc.dim("•")} Lint: ${pc.bold(stackProfile?.lintCommand || "npx eslint src/")}`
+    );
+  } else if (language === "python") {
+    console.log(
+      `    ${pc.dim("•")} Tests: ${pc.bold(stackProfile?.testCommand || "python -m pytest")}`
+    );
+    console.log(
+      `    ${pc.dim("•")} Typecheck: ${pc.bold(stackProfile?.typeCheckCommand || "python -m mypy src/")}`
+    );
+    console.log(
+      `    ${pc.dim("•")} Lint: ${pc.bold(stackProfile?.lintCommand || "ruff check src/")}`
+    );
+  } else if (language === "go") {
+    console.log(
+      `    ${pc.dim("•")} Tests: ${pc.bold("go test ./...")}`
+    );
+    console.log(
+      `    ${pc.dim("•")} Analysis: ${pc.bold("go vet ./...")}`
+    );
+    console.log(
+      `    ${pc.dim("•")} Lint: ${pc.bold("golangci-lint run ./...")}`
+    );
+  } else if (language === "rust") {
+    console.log(
+      `    ${pc.dim("•")} Tests: ${pc.bold("cargo test")}`
+    );
+    console.log(
+      `    ${pc.dim("•")} Lint: ${pc.bold("cargo clippy")}`
+    );
+  } else if (language === "php") {
+    console.log(
+      `    ${pc.dim("•")} Tests: ${pc.bold("vendor/bin/phpunit")}`
+    );
+    console.log(
+      `    ${pc.dim("•")} Analysis: ${pc.bold("vendor/bin/phpstan analyse src/")}`
+    );
+  } else {
+    console.log(
+      `    ${pc.dim("•")} Stack not detected — Devflow will use defaults. Configure in ${pc.dim(".devflow/config.json")}`
+    );
+  }
+
+  // CI detection
+  if (stackProfile?.hasCI) {
+    console.log(
+      `    ${pc.dim("•")} CI: ${pc.green(stackProfile.ciProvider || "detected")}`
+    );
+  } else {
+    console.log(
+      `    ${pc.dim("•")} CI: ${pc.yellow("not detected — consider setting up GitHub Actions")}`
+    );
+  }
+
+  console.log();
+  console.log(pc.bold("First recommended command:"));
+  console.log(
+    `  ${pc.cyan(isBrownfield ? "devflow discover" : "devflow feature new <name>")}`
+  );
+  console.log();
+  console.log(
+    `Run ${pc.bold("devflow next")} anytime to see the recommended next action.\n`
+  );
 }

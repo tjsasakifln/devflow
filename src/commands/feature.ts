@@ -3,12 +3,24 @@ import { execSync } from "node:child_process";
 import { ArtifactManager } from "../artifacts/manager.js";
 import { inspectProject } from "../project/inspector.js";
 import { fileExists, listDir } from "../utils/fs.js";
+import {
+  isInteractive,
+  requiredTextInput,
+  optionalTextInput,
+  spinnerWhile,
+  confirmOrExit,
+} from "../utils/prompts.js";
 import pc from "picocolors";
+
+export interface FeatureNewOptions {
+  actor?: string;
+  nonInteractive?: boolean;
+}
 
 export async function featureNewCommand(
   cwd: string,
   featureName: string,
-  options?: { actor?: string }
+  options?: FeatureNewOptions
 ): Promise<void> {
   const rootPath = path.resolve(cwd);
 
@@ -51,13 +63,60 @@ export async function featureNewCommand(
     return;
   }
 
+  // Determine actor
+  const actor = options?.actor || process.env.DEVFLOW_ACTOR || process.env.USER || undefined;
+
+  // ── Interactive mode ──
+  const runInteractive = !options?.nonInteractive && isInteractive();
+  let prefill: Record<string, string> | null = null;
+
+  if (runInteractive) {
+    console.log(pc.dim("We will walk through each section of requirements.md."));
+    console.log(pc.dim("Press Ctrl+C at any time to cancel.\n"));
+
+    const problem = await requiredTextInput("What problem does this feature solve?");
+    const who = await requiredTextInput("Who uses this feature? (role, persona, or user type)");
+    const affected = await requiredTextInput(
+      "What screens / APIs / files / modules are affected? (comma-separated)"
+    );
+    const mustNotBreak = await requiredTextInput(
+      "What existing behaviors must NOT break? (comma-separated)"
+    );
+    const doubtsRaw = await optionalTextInput(
+      "What doubts or uncertainties still exist? (comma-separated, leave empty if none)"
+    );
+    const negativeScope = await requiredTextInput(
+      "What is explicitly OUT OF SCOPE for this feature? (comma-separated)"
+    );
+
+    prefill = { problem, who, affected, mustNotBreak, doubtsRaw, negativeScope };
+
+    const shouldContinue = await confirmOrExit("Generate pre-filled requirements.md with these answers?");
+    if (!shouldContinue) {
+      console.log(pc.yellow("\nFeature creation cancelled.\n"));
+      return;
+    }
+  }
+
   // Create feature directory with requirements template
   console.log(pc.blue("→") + ` Creating feature: ${pc.bold(featureId)}`);
   const featurePath = await manager.ensureFeatureDir(featureName, featureId);
 
+  // ── Write pre-filled requirements if interactive ──
+  if (prefill) {
+    await spinnerWhile("Generating requirements.md", async () => {
+      const now = new Date().toISOString();
+      const content = generatePrefilledRequirements(featureName, featureId, now, prefill!);
+      await manager.safeWrite(
+        path.join(featurePath, "requirements.md"),
+        content,
+        "requirements.md"
+      );
+    });
+  }
+
   // Update active feature
   const now = new Date().toISOString();
-  const actor = options?.actor || process.env.DEVFLOW_ACTOR || process.env.USER || undefined;
   await manager.writeActiveFeature({
     featureId,
     featureName,
@@ -122,14 +181,153 @@ export async function featureNewCommand(
   if (branchCreated) {
     console.log(pc.bold("Branch:      "), `feature/${featureId}`);
   }
+  if (actor) {
+    console.log(pc.bold("Actor:       "), actor);
+  }
   console.log();
   console.log(pc.bold("Created files:"));
   console.log(`  ${pc.dim("→")} _devflow/features/${featureId}/requirements.md`);
   console.log(`  ${pc.dim("→")} _devflow/features/${featureId}/interfaces/`);
   console.log();
+
+  if (prefill) {
+    console.log(pc.green("Requirements.md pre-filled with your answers."));
+    console.log(pc.dim("Review and refine each section before proceeding."));
+    const doubts = prefill.doubtsRaw?.trim();
+    if (doubts) {
+      console.log(
+        pc.yellow(`  ⚠  ${doubts.split(",").length} doubt(s) recorded as [DOUBT] markers — must be resolved before feature-design.`)
+      );
+    }
+    console.log();
+  }
+
   console.log(
-    "Next: edit " +
-      pc.bold(`_devflow/features/${featureId}/requirements.md`) +
-      " to define the feature.\n"
+    "Next: " +
+      pc.bold(`devflow next`) +
+      " to see recommended actions.\n"
   );
+}
+
+/**
+ * Generate a pre-filled requirements.md from interactive answers.
+ * Maps each answer to the appropriate template section.
+ */
+function generatePrefilledRequirements(
+  featureName: string,
+  featureId: string,
+  timestamp: string,
+  answers: Record<string, string>,
+): string {
+  const doubtItems = answers.doubtsRaw
+    ? answers.doubtsRaw
+        .split(",")
+        .map((d) => d.trim())
+        .filter(Boolean)
+        .map((d) => `- [ ] [DOUBT] ${d}`)
+        .join("\n")
+    : "";
+
+  const negativeItems = answers.negativeScope
+    ? answers.negativeScope
+        .split(",")
+        .map((d) => d.trim())
+        .filter(Boolean)
+        .map((d) => `- Esta feature NÃO inclui: ${d}`)
+        .join("\n")
+    : "- Esta feature NÃO inclui: <!-- descrever -->";
+
+  const affectedItems = answers.affected
+    ? answers.affected
+        .split(",")
+        .map((d) => d.trim())
+        .filter(Boolean)
+        .map((d) => `- ${d}`)
+        .join("\n")
+    : "- ";
+
+  const mustNotBreakItems = answers.mustNotBreak
+    ? answers.mustNotBreak
+        .split(",")
+        .map((d) => d.trim())
+        .filter(Boolean)
+        .map((d) => `- ${d}`)
+        .join("\n")
+    : "- ";
+
+  return [
+    `# Feature: ${featureName} (${featureId})`,
+    "",
+    "> Spec-Driven Development: entender → especificar → planejar → testar → implementar → verificar.",
+    "> ⚠️ Este arquivo foi pré-preenchido por modo interativo. Revise e refine cada seção.",
+    "",
+    "## Descrição Funcional",
+    answers.problem || "<!-- Descreva qual problema de negócio esta feature resolve. -->",
+    "",
+    "## Comportamento Esperado",
+    `**Atores:** ${answers.who || "<!-- quem usa esta feature? -->"}`,
+    "",
+    `<!-- Descreva: Quando [ator] faz [ação], o sistema [reação]. -->`,
+    "",
+    "## Invariantes de Domínio",
+    "- ",
+    "",
+    "## Entradas",
+    "- ",
+    "",
+    "## Saídas",
+    "- ",
+    "",
+    "## Regras de Negócio",
+    "- R01: ",
+    "- R02: ",
+    "",
+    "## Dados Persistidos",
+    "- ",
+    "",
+    "## Integrações Externas",
+    affectedItems,
+    "",
+    "## Critérios de Aceitação",
+    "- [ ] **Cenário 1:** Given <!-- contexto -->, When <!-- ação -->, Then <!-- resultado esperado -->",
+    "- [ ] **Cenário 2:** Given <!-- contexto -->, When <!-- ação -->, Then <!-- resultado esperado -->",
+    "- [ ] **Cenário 3:** Given <!-- contexto -->, When <!-- ação -->, Then <!-- resultado esperado -->",
+    "",
+    "## Casos de Erro",
+    "- **Erro 1:** <!-- descrição → comportamento esperado -->",
+    "- **Erro 2:** <!-- descrição → comportamento esperado -->",
+    "",
+    "## Casos Extremos",
+    "- [ ] <!-- edge case 1 -->",
+    "- [ ] <!-- edge case 2 -->",
+    "",
+    "## Restrições Técnicas",
+    "- ",
+    "",
+    "## Escopo Negativo",
+    negativeItems,
+    "",
+    "## Requisitos Não-Funcionais",
+    mustNotBreakItems
+      ? `**Comportamentos que NÃO devem quebrar:**\n${mustNotBreakItems}\n`
+      : "",
+    "- **Performance:** <!-- requisito -->",
+    "- **Segurança:** <!-- requisito -->",
+    "- **Observabilidade:** <!-- requisito -->",
+    "",
+    "## Riscos de Manutenção",
+    "- **Risco 1:** <!-- descrição → mitigação -->",
+    "- **Risco 2:** <!-- descrição → mitigação -->",
+    "",
+    "## Dúvidas [DOUBT]",
+    doubtItems || "<!-- Nenhuma dúvida registrada. -->",
+    "",
+    "---",
+    "",
+    `*Gerado: ${timestamp} (modo interativo)*`,
+    `*Implementador: ${process.env.USER || "desconhecido"}*`,
+    "*Status: Draft — requer revisão de requirements*",
+    "*Use `devflow next` para ver o diagnóstico e próximos passos.*",
+    "",
+  ].join("\n");
 }

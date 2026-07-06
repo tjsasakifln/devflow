@@ -21,6 +21,8 @@ export interface FeatureInfo {
   reviewerActor?: string;
 }
 
+import type { StackProfile } from "../detection/stack.js";
+
 export interface ProjectInspection {
   rootPath: string;
   hasGit: boolean;
@@ -40,4 +42,6 @@ export interface ProjectInspection {
   fileCount: number;
   gitStatus: string;
   lastModifiedTimestamp: number;
+  /** Full technology stack profile for stack-adaptive checks */
+  stackProfile?: StackProfile;
 }

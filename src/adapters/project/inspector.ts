@@ -3,6 +3,7 @@ import { fileExists } from "../../kernel/utils/fs.js";
 import { scanFiles } from "./file-scanner.js";
 import { inspectGit } from "./git-inspector.js";
 import { detectFeatures, getActiveFeature } from "./feature-detector.js";
+import { detectStackProfile } from "../../kernel/detection/stack.js";
 import type { ProjectInspection } from "../../kernel/types/index.js";
 
 export async function inspectProject(
@@ -35,6 +36,8 @@ export async function inspectProject(
     });
   }
 
+  const stackProfile = await detectStackProfile(resolvedRoot);
+
   return {
     rootPath: resolvedRoot,
     hasGit: git.hasGit,
@@ -54,5 +57,6 @@ export async function inspectProject(
     fileCount: scanner.fileCount,
     gitStatus: git.gitStatus,
     lastModifiedTimestamp: Date.now(),
+    stackProfile,
   };
 }
