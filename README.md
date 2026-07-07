@@ -7,13 +7,15 @@
 [![node >= 18](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Devflow** reduces error probability, raises the cost of skipping engineering steps, produces auditable evidence, and blocks dangerous shortcuts. It does **not** eliminate the need for qualified human review.
+**Devflow** is a process governance CLI: it reduces error probability through explicit state transitions, raises the cost of skipping engineering steps, and produces an auditable trail of evidence. It does **not** eliminate the need for qualified human review.
+
+**Enforcement model:** Devflow blocks happen when developers voluntarily run Devflow commands. For mandatory enforcement, install the optional git hooks during `devflow install`. Devflow is not a sandbox, not an external policy engine, and cannot prevent deliberate bypass. It creates an audit trail that makes bypass visible.
 
 ## What Devflow Does
 
 - Detects project state across 22 states (greenfield, brownfield, feature phases)
 - Enforces a spec-driven workflow with explicit state transitions
-- Runs 25 Definition of Done checks before feature completion
+- Runs 25 Definition of Done checks before feature completion (including 1 integrity consolidation gate)
 - Generates structured implementation prompts for AI agents (Claude Code, Cursor)
 - Provides independent gatekeeper review (implementer ≠ approver, Constitution C12)
 - Generates auditable evidence (logs with actor identity, hashes, git context)
@@ -28,9 +30,10 @@
 - Does **not** replace human code review
 - Does **not** prevent deliberate process bypass
 - Does **not** guarantee production-readiness from passing checks
-- Does **not** automatically detect all code-spec drift
+- Does **not** automatically detect all code-spec drift (heuristic checks only)
 - Does **not** eliminate the need for qualified engineering judgment
 - Does **not** write code for you — it prepares the ground so code is correct by construction
+- Does **not** enforce anything outside of voluntary CLI execution (unless git hooks are installed)
 
 ## First Use — Three Paths
 
@@ -159,7 +162,9 @@ devflow feature prompt 001-my-feature --copy
 | `devflow discover` | Discover and document brownfield project structure |
 | `devflow eval run` | Run evaluation suite and generate report |
 
-### PREVIEW — Placeholder, prints intention only
+### PREVIEW — Placeholder stubs, print intention only (no real execution)
+
+These commands are not yet implemented. They display a structured placeholder message describing what the command will do when built. Use the manual alternatives listed.
 
 | Command | Manual Alternative |
 |---------|-------------------|
