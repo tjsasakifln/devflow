@@ -202,46 +202,8 @@ describe("severityBlocks", () => {
   });
 });
 
-describe("JSON pipe-safe output", () => {
-  const distExists = fs.existsSync(path.resolve(process.cwd(), "dist/main.js"));
-
-  it("should produce pipe-safe JSON without banner in stdout", () => {
-    if (!distExists) return; // CI runs tests before build, dist/ may not exist
-    let stdout = "";
-    try {
-      stdout = execSync("node dist/main.js audit --format json 2>/dev/null", {
-        cwd: path.resolve(process.cwd()),
-        encoding: "utf-8",
-        timeout: 15000,
-      });
-    } catch (e: any) {
-      stdout = e.stdout ?? "";
-    }
-    if (!stdout.trim()) return;
-    const parsed = JSON.parse(stdout);
-    expect(parsed.verdict).toBeDefined();
-    expect(parsed.severityMatrix).toBeDefined();
-    expect(parsed.metadata).toBeDefined();
-  }, 20000);
-
-  it("review-pr with --format json should produce pipe-safe JSON", () => {
-    if (!distExists) return;
-    let stdout = "";
-    try {
-      stdout = execSync("node dist/main.js review-pr --format json 2>/dev/null", {
-        cwd: path.resolve(process.cwd()),
-        encoding: "utf-8",
-        timeout: 15000,
-      });
-    } catch (e: any) {
-      stdout = e.stdout ?? "";
-    }
-    if (!stdout.trim()) return;
-    const parsed = JSON.parse(stdout);
-    expect(parsed.verdict).toBeDefined();
-    expect(parsed.severityMatrix).toBeDefined();
-  }, 20000);
-});
+// JSON pipe-safe tests moved to test/unit/json-pipe-safe.test.ts (tsx-based, no build)
+// and test/cli/json-pipe-safe.test.ts (compiled dist/main.js, requires build)
 
 describe("riskTolerance integration", () => {
   it("review-pr with riskTolerance strict makes MEDIUM risks blocking", async () => {

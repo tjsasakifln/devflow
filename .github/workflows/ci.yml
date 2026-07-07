@@ -16,6 +16,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
@@ -26,39 +28,135 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # ── Mandatory Gates (BLOCKING — use only tools in devDependencies) ──
+      # ── Phase 1: Static Analysis (no build needed) ──
 
       - name: TypeScript type check
         id: typecheck
         run: npm run typecheck
 
-      - name: Unit tests
-        id: tests
-        run: npm test
+      - name: Unit tests (no build dependency)
+        id: unit
+        run: npm run test:unit
 
-      - name: Coverage
-        id: coverage
-        run: npm run test:coverage
+      # ── Phase 2: Build ──
 
       - name: Build
         id: build
         run: npm run build
 
-      - name: Devflow self-check
-        id: selfcheck
-        run: node dist/main.js --version && node dist/main.js status --json 2>&1 || true
+      # ── Phase 3: Integration Tests (require dist/main.js) ──
+
+      - name: CLI integration tests
+        id: cli
+        run: npm run test:cli
+
+      - name: Coverage
+        id: coverage
+        run: npm run test:coverage
+
+      # ── Phase 4: CLI Smoke Tests (BLOCKING — no || true) ──
+
+      - name: Smoke test — version
+        id: smoke_version
+        run: node dist/main.js --version
+
+      - name: Smoke test — list-tiers
+        id: smoke_tiers
+        run: node dist/main.js --list-tiers
+
+      - name: Smoke test — audit JSON
+        id: smoke_audit_json
+        run: |
+          node dist/main.js audit --format json 2>/dev/null \
+            | node -e "
+                const chunks = [];
+                const stdin = process.stdin;
+                stdin.on('data', c => chunks.push(c));
+                stdin.on('end', () => {
+                  const text = Buffer.concat(chunks).toString();
+                  if (!text.trim()) {
+                    console.error('FAIL: stdout empty — JSON must be produced even on blocking verdict');
+                    process.exit(1);
+                  }
+                  if (!text.trim().startsWith('{')) {
+                    console.error('FAIL: stdout does not start with { — banner leaked to stdout');
+                    console.error('First 200 chars: ' + text.trim().substring(0, 200));
+                    process.exit(1);
+                  }
+                  let d;
+                  try { d = JSON.parse(text); } catch(e) {
+                    console.error('FAIL: stdout is not valid JSON: ' + e.message);
+                    console.error('Raw stdout: ' + text.substring(0, 500));
+                    process.exit(1);
+                  }
+                  if (!d.verdict) { console.error('FAIL: missing verdict'); process.exit(1); }
+                  if (!d.severityMatrix) { console.error('FAIL: missing severityMatrix'); process.exit(1); }
+                  if (!d.metadata) { console.error('FAIL: missing metadata'); process.exit(1); }
+                  console.log('PASS audit JSON: verdict=' + d.verdict + ' risks=' + (d.risks||[]).length);
+                });
+              "
+
+      - name: Smoke test — audit markdown
+        id: smoke_audit_md
+        run: |
+          OUTPUT=$(node dist/main.js audit --format markdown)
+          echo "$OUTPUT" | grep -q "Verdict" || (echo "FAIL: missing Verdict section in markdown output" && exit 1)
+          echo "PASS: audit markdown produced"
+
+      - name: Smoke test — review-pr JSON with risk-tolerance strict
+        id: smoke_review_json
+        run: |
+          node dist/main.js review-pr --format json --risk-tolerance strict 2>/dev/null \
+            | node -e "
+                const chunks = [];
+                const stdin = process.stdin;
+                stdin.on('data', c => chunks.push(c));
+                stdin.on('end', () => {
+                  const text = Buffer.concat(chunks).toString();
+                  if (!text.trim()) {
+                    console.error('FAIL: stdout empty');
+                    process.exit(1);
+                  }
+                  if (!text.trim().startsWith('{')) {
+                    console.error('FAIL: stdout does not start with { — banner leaked to stdout');
+                    process.exit(1);
+                  }
+                  let d;
+                  try { d = JSON.parse(text); } catch(e) {
+                    console.error('FAIL: stdout is not valid JSON: ' + e.message);
+                    process.exit(1);
+                  }
+                  if (!d.verdict) { console.error('FAIL: missing verdict'); process.exit(1); }
+                  if (!d.severityMatrix) { console.error('FAIL: missing severityMatrix'); process.exit(1); }
+                  console.log('PASS review-pr JSON strict: verdict=' + d.verdict + ' risks=' + (d.risks||[]).length);
+                });
+              "
+
+      - name: Smoke test — review-pr markdown
+        id: smoke_review_md
+        run: |
+          OUTPUT=$(node dist/main.js review-pr --format markdown)
+          echo "$OUTPUT" | grep -q "Verdict" || (echo "FAIL: missing Verdict section in markdown output" && exit 1)
+          echo "PASS: review-pr markdown produced"
 
       # ── Summary ──
 
       - name: CI Summary
         if: always()
         run: |
-          echo "## CI Results — Node ${{ matrix.node-version }}" >> $GITHUB_STEP_SUMMARY
-          echo "| Gate | Result |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| TypeScript | ${{ steps.typecheck.outcome }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Tests | ${{ steps.tests.outcome }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Coverage | ${{ steps.coverage.outcome }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Build | ${{ steps.build.outcome }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**All gates mandatory.** Only tools declared in devDependencies are used." >> $GITHUB_STEP_SUMMARY
+          echo "## CI Results — Node \${{ matrix.node-version }}" >> \$GITHUB_STEP_SUMMARY
+          echo "| Gate | Result |" >> \$GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> \$GITHUB_STEP_SUMMARY
+          echo "| TypeScript | \${{ steps.typecheck.outcome }} |" >> \$GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | \${{ steps.unit.outcome }} |" >> \$GITHUB_STEP_SUMMARY
+          echo "| Build | \${{ steps.build.outcome }} |" >> \$GITHUB_STEP_SUMMARY
+          echo "| CLI Tests | \${{ steps.cli.outcome }} |" >> \$GITHUB_STEP_SUMMARY
+          echo "| Coverage | \${{ steps.coverage.outcome }} |" >> \$GITHUB_STEP_SUMMARY
+          echo "| --version | \${{ steps.smoke_version.outcome }} |" >> \$GITHUB_STEP_SUMMARY
+          echo "| --list-tiers | \${{ steps.smoke_tiers.outcome }} |" >> \$GITHUB_STEP_SUMMARY
+          echo "| audit JSON | \${{ steps.smoke_audit_json.outcome }} |" >> \$GITHUB_STEP_SUMMARY
+          echo "| audit MD | \${{ steps.smoke_audit_md.outcome }} |" >> \$GITHUB_STEP_SUMMARY
+          echo "| review-pr JSON | \${{ steps.smoke_review_json.outcome }} |" >> \$GITHUB_STEP_SUMMARY
+          echo "| review-pr MD | \${{ steps.smoke_review_md.outcome }} |" >> \$GITHUB_STEP_SUMMARY
+          echo "" >> \$GITHUB_STEP_SUMMARY
+          echo "**All gates mandatory. Zero || true.**" >> \$GITHUB_STEP_SUMMARY

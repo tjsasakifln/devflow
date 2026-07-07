@@ -21,6 +21,8 @@
     "dev": "tsx src/main.ts",
     "start": "node dist/main.js",
     "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:cli": "vitest run --config vitest.cli.config.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",

@@ -123,7 +123,7 @@ function scanFileForPatterns(
         pattern.description,
         pattern.recommendation,
         tolerance,
-        { file: filePath, line: lineNum },
+        { file: filePath, line: lineNum, source: "universal-pattern", patternId: pattern.id },
       ));
     }
   }
@@ -183,6 +183,7 @@ async function detectFeature(cwd: string, tolerance: "relaxed" | "moderate" | "s
               `Missing ${a.label} (${a.file}) — ${a.risk}`,
               `Run 'devflow next' to see what artifacts to create next, or use 'devflow audit' without feature setup for quick checks.`,
               tolerance,
+              { source: "artifact-check" },
             ));
             evidenceChecks.push({
               type: "artifact",
@@ -267,6 +268,7 @@ async function detectFeature(cwd: string, tolerance: "relaxed" | "moderate" | "s
       "No active Devflow feature — changes have no declared scope or requirements traceability",
       "For full governance, run 'devflow feature new <name>'. For quick checks, this audit still scans for dangerous patterns.",
       tolerance,
+      { source: "artifact-check" },
     ));
     artifactRisks.push(createRisk(
       "LOW",
@@ -274,6 +276,7 @@ async function detectFeature(cwd: string, tolerance: "relaxed" | "moderate" | "s
       "No adversarial review or gatekeep available without a feature",
       "Create a feature to enable adversarial review and gatekeeper approval.",
       tolerance,
+      { source: "artifact-check" },
     ));
   }
 
@@ -422,7 +425,7 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
           `${p.description} (${p.pattern})`,
           p.recommendation,
           tolerance,
-          { file: p.file, line: p.line },
+          { file: p.file, line: p.line, source: "stack-adapter", adapter: lang },
         ));
         allRisks.push(...stackRisks);
       } catch {
@@ -497,6 +500,7 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
       "Working tree is dirty — uncommitted changes not reflected in this audit",
       "Commit or stash changes before running full audit. Use --working-tree to include unstaged changes.",
       tolerance,
+      { source: "git-check" },
     ));
   }
 
@@ -504,7 +508,7 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
   const seen = new Set<string>();
   const dedupedRisks: Risk[] = [];
   for (const risk of allRisks) {
-    const key = `${risk.severity}|${risk.category}|${risk.file ?? ""}|${risk.line ?? ""}|${risk.description.slice(0, 60)}`;
+    const key = `${risk.source ?? ""}|${risk.patternId ?? ""}|${risk.file ?? ""}|${risk.line ?? ""}|${risk.category}|${risk.severity}`;
     if (!seen.has(key)) {
       seen.add(key);
       dedupedRisks.push(risk);

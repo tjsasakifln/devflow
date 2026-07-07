@@ -42,6 +42,12 @@ export interface Risk {
   description: string;
   recommendation: string;
   blocking: boolean; // true if this risk blocks the verdict at current riskTolerance
+  /** Origin of the risk: "universal-pattern" | "stack-adapter" | "artifact-check" | "git-check" */
+  source?: string;
+  /** Specific rule ID: "eval-usage" | "hardcoded-secret" | "empty-catch" etc. */
+  patternId?: string;
+  /** Stack adapter that generated this risk, e.g. "TypeScript" */
+  adapter?: string;
 }
 
 export type RiskCategory =

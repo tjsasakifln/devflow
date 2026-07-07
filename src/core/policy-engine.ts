@@ -127,7 +127,7 @@ export function createRisk(
   description: string,
   recommendation: string,
   tolerance: RiskTolerance,
-  opts?: { file?: string; line?: number },
+  opts?: { file?: string; line?: number; source?: string; patternId?: string; adapter?: string },
 ): Risk {
   return {
     severity,
@@ -137,6 +137,9 @@ export function createRisk(
     blocking: severityBlocks(severity, tolerance),
     file: opts?.file,
     line: opts?.line,
+    source: opts?.source,
+    patternId: opts?.patternId,
+    adapter: opts?.adapter,
   };
 }
 
