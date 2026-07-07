@@ -160,7 +160,7 @@ export async function gatekeep(
     console.log(pc.yellow("     - Final report will document this as solo-hardened approval\n"));
 
     // Verify adversarial review exists
-    const advReviewPath = path.join(rootPath, ".devflow", "audits", "adversarial-review.md");
+    const advReviewPath = path.join(rootPath, ".devflow", "audits", featureId, "adversarial-review.md");
     const hasAdvReview = await fileExists(advReviewPath);
     if (!hasAdvReview) {
       console.log(pc.red("⛔ Solo-Hardened Gatekeep Refused — Missing Adversarial Review\n"));

@@ -398,7 +398,7 @@ export async function adversarialReview(
   console.log();
 
   // ── Generate report ──
-  const reportPath = path.join(rootPath, ".devflow", "audits", "adversarial-review.md");
+  const reportPath = path.join(rootPath, ".devflow", "audits", featureId, "adversarial-review.md");
   const auditDir = path.dirname(reportPath);
 
   try {

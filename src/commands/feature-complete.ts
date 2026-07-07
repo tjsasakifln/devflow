@@ -338,7 +338,7 @@ async function runAllDoDChecks(
   await checkImplementerSeparation(checks, featureDir, rootPath);
 
   // ── Check 21: Adversarial review ──
-  await checkAdversarialReview(checks, rootPath);
+  await checkAdversarialReview(checks, rootPath, featureDir);
 
   // ── Check 22: Loop validation ──
   await checkLoopValidation(checks, featureDir);
@@ -904,7 +904,8 @@ async function checkImplementerSeparation(checks: DoDCheck[], featureDir: string
   // Solo-hardened: skip implementer separation, require compensating evidence
   if (reviewMode === "solo-hardened") {
     // Verify adversarial review passed as compensating evidence
-    const reviewPath = path.join(rootPath, ".devflow", "audits", "adversarial-review.md");
+    const featureIdFromDir = path.basename(featureDir);
+    const reviewPath = path.join(rootPath, ".devflow", "audits", featureIdFromDir, "adversarial-review.md");
     const hasAdvReview = await fileExists(reviewPath);
     const advContent = hasAdvReview ? await safeReadFile(reviewPath) : null;
     const advPassed = advContent?.includes("PASS") ?? false;
@@ -974,8 +975,9 @@ async function checkImplementerSeparation(checks: DoDCheck[], featureDir: string
   }
 }
 
-async function checkAdversarialReview(checks: DoDCheck[], rootPath: string) {
-  const reviewPath = path.join(rootPath, ".devflow", "audits", "adversarial-review.md");
+async function checkAdversarialReview(checks: DoDCheck[], rootPath: string, featureDir: string) {
+  const featureId = path.basename(featureDir);
+  const reviewPath = path.join(rootPath, ".devflow", "audits", featureId, "adversarial-review.md");
   const exists = await fileExists(reviewPath);
   if (exists) {
     const content = await safeReadFile(reviewPath);
@@ -1135,7 +1137,8 @@ async function checkImplementationLog(checks: DoDCheck[], featureDir: string, ro
     }
 
     // Verify adversarial review exists for current feature
-    const advReviewPath = path.join(rootPath, ".devflow", "audits", "adversarial-review.md");
+    const featureIdForAdv = path.basename(featureDir);
+    const advReviewPath = path.join(rootPath, ".devflow", "audits", featureIdForAdv, "adversarial-review.md");
     const advReviewExists = await fileExists(advReviewPath);
 
     // Verify gatekeep log has entries for this feature
