@@ -166,7 +166,8 @@ export function registerCommands(program: Command): void {
     .option("--copy", "Copy prompt to clipboard")
     .option("--output <file>", "Write prompt to a specific file")
     .option("--save", "Save prompt to feature directory as implementation-prompt.md")
-    .action(async (id: string, options: { copy?: boolean; output?: string; save?: boolean }) => {
+    .option("--preview", "Generate prompt even if pre-code gates are not passed (for review only, NOT for implementation)")
+    .action(async (id: string, options: { copy?: boolean; output?: string; save?: boolean; preview?: boolean }) => {
       await featurePromptCommand(process.cwd(), id, options);
     });
 

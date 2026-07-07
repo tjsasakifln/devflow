@@ -14,6 +14,7 @@ export interface FeaturePromptOptions {
   copy?: boolean;
   output?: string;
   save?: boolean;
+  preview?: boolean;
 }
 
 /**
@@ -160,15 +161,48 @@ export async function featurePromptCommand(
   ];
 
   if (preCodeStates.includes(stateResult.currentState)) {
+    if (!options.preview) {
+      // ── Block: refuse to generate prompt before feature-coding-ready ──
+      console.log(
+        pc.red(
+          `\n🚫 Refused — current state is ${stateResult.currentState}, not yet feature-coding-ready.\n`,
+        ),
+      );
+      console.log(
+        pc.yellow(
+          "Devflow blocks implementation prompt generation until pre-code gates pass.\n",
+        ),
+      );
+
+      console.log(
+        pc.bold("Required state progression:"),
+      );
+      console.log(
+        pc.dim("  feature-empty → feature-requirements → feature-design →"),
+      );
+      console.log(
+        pc.dim("  feature-test-plan → feature-pre-code-audit → feature-coding-ready"),
+      );
+      console.log();
+      console.log(
+        `Run ${pc.bold("devflow next --diagnose")} to see what to create next.`,
+      );
+      console.log(
+        `Run ${pc.bold(`devflow feature prompt ${resolvedId} --preview`)} to generate a preview anyway (not for implementation).\n`,
+      );
+      return;
+    }
+
+    // ── Preview mode: warn but generate ──
     console.log(
       pc.yellow(
-        `\n⚠️  Current state: ${stateResult.currentState} — not yet feature-coding-ready.\n`,
+        `\n⚠️  PREVIEW MODE — Current state: ${stateResult.currentState} — not yet feature-coding-ready.\n`,
       ),
     );
     console.log(
-      pc.dim(
-        "Implementation prompt generated anyway for preview/review purposes.\n" +
-          "Do NOT start coding until all pre-code gates pass.\n" +
+      pc.yellow(
+        "This prompt is for PREVIEW/REVIEW only. Do NOT start coding.\n" +
+          "All pre-code gates must pass before implementation.\n" +
           "Run devflow next to see remaining work.\n",
       ),
     );
@@ -193,11 +227,19 @@ export async function featurePromptCommand(
   const saveToFeature = options.save ?? false;
 
   if (saveToFeature) {
-    const promptPath = path.join(featureDir, "implementation-prompt.md");
+    const isPreview = options.preview && preCodeStates.includes(stateResult.currentState);
+    const fileName = isPreview ? "implementation-prompt-PREVIEW.md" : "implementation-prompt.md";
+    const promptPath = path.join(featureDir, fileName);
     const fs = await import("node:fs/promises");
     await fs.writeFile(promptPath, prompt, "utf-8");
-    console.log(pc.green(`\n✅ Implementation prompt saved to:`));
-    console.log(pc.dim(`   ${promptPath}`));
+    if (isPreview) {
+      console.log(pc.yellow(`\n⚠️  PREVIEW prompt saved to:`));
+      console.log(pc.yellow(`   ${promptPath}`));
+      console.log(pc.yellow("   This is NOT an implementation-ready prompt. Pre-code gates must pass first."));
+    } else {
+      console.log(pc.green(`\n✅ Implementation prompt saved to:`));
+      console.log(pc.dim(`   ${promptPath}`));
+    }
   }
 
   if (outputPath) {
@@ -579,3 +621,4 @@ function extractDoubtResolutions(requirementsMd: string): string[] {
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
