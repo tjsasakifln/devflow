@@ -41,20 +41,21 @@ export async function auditCommand(
   banner(pc.bold("\n🔍 Devflow Audit — Local AI Code Review\n"));
 
   // 2. Show what's being audited
+  // Determine explicit scope from flags
+  // audit command defaults to "all" — "base" is only used by review-pr
+  const scope: string = options.staged ? "staged" : options.workingTree ? "working-tree" : "all";
+
   const scopeParts: string[] = [];
-  if (options.staged) scopeParts.push("staged changes");
-  if (options.workingTree) scopeParts.push("unstaged working tree");
-  if (!options.staged && !options.workingTree) {
-    scopeParts.push("staged changes, unstaged working tree, and diff vs base");
-  }
+  if (scope === "staged") scopeParts.push("staged changes");
+  else if (scope === "working-tree") scopeParts.push("unstaged working tree");
+  else scopeParts.push("staged changes, unstaged working tree, and diff vs base");
   banner(pc.dim(`Scope: ${scopeParts.join(" + ")}`));
 
   // 3. Run audit
   const opts: AuditOptions = {
     cwd,
     base: options.base ?? "main",
-    staged: options.staged,
-    workingTree: options.workingTree,
+    scope: scope as AuditOptions["scope"],
     riskTolerance: options.riskTolerance as AuditOptions["riskTolerance"],
   };
 

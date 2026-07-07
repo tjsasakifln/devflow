@@ -17,7 +17,7 @@
 - **You need a risk report to paste into a PR** before asking for human review — `devflow review-pr` generates markdown you can attach.
 - **You work in a legacy codebase and AI agents keep breaking architecture boundaries** — Devflow enforces spec-driven coding and catches architectural drift.
 - **You're a solo founder who ships fast but worries about accumulating technical debt** — relaxed mode keeps you moving without losing the audit trail.
-- **You want CI/CD integration for AI code governance** without sending code to the cloud — Devflow runs locally and also works in GitHub Actions.
+- **You want CI/CD integration for AI code governance** without sending code to LLM providers or third-party review SaaS; when run on GitHub Actions, code is processed inside the configured CI runner — Devflow runs locally and also works in GitHub Actions.
 - **Your team confuses "the tests pass" with "the code is well-engineered"** — Devflow checks evidence, not just green CI.
 - **You need an audit trail to show compliance**, not just a green CI checkmark — every decision is logged with hashes, actor identity, and git context.
 
@@ -215,7 +215,7 @@ devflow audit --risk-tolerance strict
 
 ## GitHub Actions
 
-Devflow runs fully in CI without sending code to the cloud. Example workflow:
+Devflow runs fully in CI without sending code to LLM providers or third-party review SaaS — processing is inside the CI runner. Example workflow:
 
 ```yaml
 name: Devflow PR Governance

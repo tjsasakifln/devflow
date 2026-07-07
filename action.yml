@@ -3,16 +3,12 @@ description: 'Audit AI-generated code changes and generate a PR risk report — 
 author: 'Devflow'
 
 inputs:
-  format:
-    description: 'Output format for the risk report'
-    required: false
-    default: 'markdown'
   risk-tolerance:
     description: 'Risk tolerance level (relaxed | moderate | strict)'
     required: false
     default: 'moderate'
   fail-on:
-    description: 'Fail pipeline when findings at or above this severity (CRITICAL | HIGH | MEDIUM | never)'
+    description: 'Fail pipeline when findings at or above this severity (CRITICAL | HIGH | MEDIUM | LOW | never)'
     required: false
     default: 'HIGH'
   working-directory:
@@ -32,15 +28,24 @@ outputs:
   verdict:
     description: 'Audit verdict (PASS | WARN | FAIL | BLOCKED)'
     value: ${{ steps.audit.outputs.verdict }}
-  report-path:
-    description: 'Path to the generated report file'
+  json-report-path:
+    description: 'Path to JSON report for machine consumption'
     value: ${{ steps.audit.outputs.report-path }}
+  human-report-path:
+    description: 'Path to human-readable markdown report'
+    value: ${{ steps.audit.outputs.human-report-path }}
   critical-count:
     description: 'Number of CRITICAL findings'
     value: ${{ steps.audit.outputs.critical-count }}
   high-count:
     description: 'Number of HIGH findings'
     value: ${{ steps.audit.outputs.high-count }}
+  medium-count:
+    description: 'Number of MEDIUM findings'
+    value: ${{ steps.audit.outputs.medium-count }}
+  low-count:
+    description: 'Number of LOW findings'
+    value: ${{ steps.audit.outputs.low-count }}
 
 runs:
   using: 'composite'
@@ -82,6 +87,7 @@ runs:
         # Set outputs
         echo "verdict=$VERDICT" >> $GITHUB_OUTPUT
         echo "report-path=/tmp/devflow-ci.json" >> $GITHUB_OUTPUT
+        echo "human-report-path=${{ inputs.working-directory }}/${{ inputs.output-file }}" >> $GITHUB_OUTPUT
         echo "critical-count=$CRITICAL" >> $GITHUB_OUTPUT
         echo "high-count=$HIGH" >> $GITHUB_OUTPUT
         echo "medium-count=$MEDIUM" >> $GITHUB_OUTPUT

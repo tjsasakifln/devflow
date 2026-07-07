@@ -34,6 +34,7 @@ export interface DiffModel {
   files: DiffFile[];
   stagedFiles: DiffFile[];
   unstagedFiles: DiffFile[];
+  baseFiles: DiffFile[];
   mergeBase: string;
   baseBranch: string;
   headRef: string;
@@ -216,6 +217,7 @@ export async function buildDiffModel(
       files: [],
       stagedFiles: [],
       unstagedFiles: [],
+      baseFiles: [],
       mergeBase,
       baseBranch,
       headRef: "",
@@ -228,8 +230,9 @@ export async function buildDiffModel(
 
   let stagedFiles: DiffFile[] = [];
   let unstagedFiles: DiffFile[] = [];
+  let baseFiles: DiffFile[] = [];
 
-  // ── Staged changes ──
+  // ── Staged changes (or base diff when base is provided) ──
   if (showStaged) {
     if (opts.base) {
       const mb = mergeBase || opts.base;
@@ -238,7 +241,12 @@ export async function buildDiffModel(
         cwd,
       );
       const numStat = tryExecGit(`diff --numstat ${mb}..HEAD`, cwd);
-      stagedFiles = buildFileList(nameStatus, numStat);
+      baseFiles = buildFileList(nameStatus, numStat);
+      baseFiles = baseFiles.map((f) => ({
+        ...f,
+        staged: false,
+        unstaged: false,
+      }));
     } else {
       const nameStatus = tryExecGit(
         "diff --cached --name-status -M",
@@ -246,12 +254,12 @@ export async function buildDiffModel(
       );
       const numStat = tryExecGit("diff --cached --numstat", cwd);
       stagedFiles = buildFileList(nameStatus, numStat);
+      stagedFiles = stagedFiles.map((f) => ({
+        ...f,
+        staged: true,
+        unstaged: false,
+      }));
     }
-    stagedFiles = stagedFiles.map((f) => ({
-      ...f,
-      staged: true,
-      unstaged: false,
-    }));
   }
 
   // ── Unstaged changes ──
@@ -306,13 +314,14 @@ export async function buildDiffModel(
     }
   }
 
-  // ── Merge staged + unstaged into a single deduplicated list ──
-  const files = mergeFileLists(stagedFiles, unstagedFiles);
+  // ── Merge staged + unstaged + base into a single deduplicated list ──
+  const files = mergeFileLists(mergeFileLists(stagedFiles, unstagedFiles), baseFiles);
 
   return {
     files,
     stagedFiles,
     unstagedFiles,
+    baseFiles,
     mergeBase,
     baseBranch,
     headRef,

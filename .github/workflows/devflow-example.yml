@@ -44,7 +44,6 @@ jobs:
         run: |
           devflow review-pr \
             --base "origin/${{ github.base_ref }}" \
-            --format markdown \
             --output devflow-report.md \
             --risk-tolerance moderate
 

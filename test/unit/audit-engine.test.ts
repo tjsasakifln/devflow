@@ -35,9 +35,9 @@ describe("audit-engine", () => {
   it("should detect file with eval() as CRITICAL risk", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "devflow-test-"));
     try {
-      execSync("git init --initial-branch=main && git add . && git commit -m init --allow-empty", { cwd: tmpDir });
+      execSync("git -c user.email=test@test.com -c user.name=Test init --initial-branch=main && git -c user.email=test@test.com -c user.name=Test add . && git -c user.email=test@test.com -c user.name=Test commit -m init --allow-empty", { cwd: tmpDir });
       fs.writeFileSync(path.join(tmpDir, "bad.ts"), 'eval("malicious code");\n');
-      execSync("git add bad.ts", { cwd: tmpDir });
+      execSync("git -c user.email=test@test.com -c user.name=Test add bad.ts", { cwd: tmpDir });
 
       const report = await runAudit({ cwd: tmpDir, base: "main", staged: true });
       const evalRisks = report.risks.filter(r => r.description.includes("eval"));
@@ -51,9 +51,9 @@ describe("audit-engine", () => {
   it("should detect hardcoded secret as HIGH risk", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "devflow-test-"));
     try {
-      execSync("git init --initial-branch=main && git add . && git commit -m init --allow-empty", { cwd: tmpDir });
+      execSync("git -c user.email=test@test.com -c user.name=Test init --initial-branch=main && git -c user.email=test@test.com -c user.name=Test add . && git -c user.email=test@test.com -c user.name=Test commit -m init --allow-empty", { cwd: tmpDir });
       fs.writeFileSync(path.join(tmpDir, "config.ts"), 'const password = "super-secret-12345678";\n');
-      execSync("git add config.ts", { cwd: tmpDir });
+      execSync("git -c user.email=test@test.com -c user.name=Test add config.ts", { cwd: tmpDir });
 
       const report = await runAudit({ cwd: tmpDir, base: "main", staged: true });
       const secretRisks = report.risks.filter(
@@ -68,9 +68,9 @@ describe("audit-engine", () => {
   it("should detect TODO without ticket as MEDIUM risk", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "devflow-test-"));
     try {
-      execSync("git init --initial-branch=main && git add . && git commit -m init --allow-empty", { cwd: tmpDir });
+      execSync("git -c user.email=test@test.com -c user.name=Test init --initial-branch=main && git -c user.email=test@test.com -c user.name=Test add . && git -c user.email=test@test.com -c user.name=Test commit -m init --allow-empty", { cwd: tmpDir });
       fs.writeFileSync(path.join(tmpDir, "todo.ts"), "// TODO fix this later\nfunction foo() {}\n");
-      execSync("git add todo.ts", { cwd: tmpDir });
+      execSync("git -c user.email=test@test.com -c user.name=Test add todo.ts", { cwd: tmpDir });
 
       const report = await runAudit({ cwd: tmpDir, base: "main", staged: true });
       const todoRisks = report.risks.filter(r => r.description.includes("TODO"));
@@ -92,9 +92,9 @@ describe("audit-engine", () => {
   it("should respect staged option", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "devflow-test-"));
     try {
-      execSync("git init --initial-branch=main && git add . && git commit -m init --allow-empty", { cwd: tmpDir });
+      execSync("git -c user.email=test@test.com -c user.name=Test init --initial-branch=main && git -c user.email=test@test.com -c user.name=Test add . && git -c user.email=test@test.com -c user.name=Test commit -m init --allow-empty", { cwd: tmpDir });
       fs.writeFileSync(path.join(tmpDir, "staged.ts"), 'eval("staged danger");\n');
-      execSync("git add staged.ts", { cwd: tmpDir });
+      execSync("git -c user.email=test@test.com -c user.name=Test add staged.ts", { cwd: tmpDir });
 
       const report = await runAudit({ cwd: tmpDir, base: "main", staged: true });
       const evalRisks = report.risks.filter(r => r.description.includes("eval"));
@@ -107,9 +107,9 @@ describe("audit-engine", () => {
   it("should detect empty catch as MEDIUM risk", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "devflow-test-"));
     try {
-      execSync("git init --initial-branch=main && git add . && git commit -m init --allow-empty", { cwd: tmpDir });
+      execSync("git -c user.email=test@test.com -c user.name=Test init --initial-branch=main && git -c user.email=test@test.com -c user.name=Test add . && git -c user.email=test@test.com -c user.name=Test commit -m init --allow-empty", { cwd: tmpDir });
       fs.writeFileSync(path.join(tmpDir, "catch.ts"), "try { foo(); } catch(e) {}\n");
-      execSync("git add catch.ts", { cwd: tmpDir });
+      execSync("git -c user.email=test@test.com -c user.name=Test add catch.ts", { cwd: tmpDir });
 
       const report = await runAudit({ cwd: tmpDir, base: "main", staged: true });
       const catchRisks = report.risks.filter(r => r.description.includes("catch"));
@@ -119,6 +119,52 @@ describe("audit-engine", () => {
     }
   });
 });
+
+  it("should detect all three sources (staged + unstaged + base diff) with scope=all", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "devflow-aha-"));
+    try {
+      const git = (args: string) => execSync(`git -c user.email=test@test.com -c user.name=Test ${args}`, { cwd: tmpDir, encoding: "utf-8", timeout: 10000 });
+
+      git("init -b main");
+      fs.writeFileSync(path.join(tmpDir, "README.md"), "# test\n");
+      git("add README.md");
+      git("commit -m init");
+
+      git("checkout -b feature-branch");
+
+      fs.writeFileSync(path.join(tmpDir, "base-change.ts"), "export const x = 1;\n");
+      git("add base-change.ts");
+      git("commit -m 'base change'");
+
+      fs.writeFileSync(path.join(tmpDir, "staged-evil.ts"), 'eval("bad");\n');
+      git("add staged-evil.ts");
+
+      // Track then modify unstaged (untracked files are invisible to git diff)
+      fs.writeFileSync(path.join(tmpDir, "unstaged-secret.ts"), 'placeholder\n');
+      git("add unstaged-secret.ts");
+      git("commit -m 'add placeholder'");
+      fs.writeFileSync(path.join(tmpDir, "unstaged-secret.ts"), 'const password = "mysecret123456";\n');
+
+      const report = await runAudit({ cwd: tmpDir, base: "main", scope: "all" });
+
+      const paths = report.changedFiles.map(f => path.basename(f.path));
+      expect(paths).toContain("base-change.ts");
+      expect(paths).toContain("staged-evil.ts");
+      expect(paths).toContain("unstaged-secret.ts");
+
+      const evalRisks = report.risks.filter(r => r.description.includes("eval"));
+      expect(evalRisks.length).toBeGreaterThan(0);
+      expect(evalRisks[0]!.severity).toBe("CRITICAL");
+
+      const secretRisks = report.risks.filter(r =>
+        r.description.toLowerCase().includes("secret") ||
+        r.description.toLowerCase().includes("password")
+      );
+      expect(secretRisks.length).toBeGreaterThan(0);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }, 20000);
 
 describe("riskTolerance with createRisk", () => {
   it("should respect riskTolerance strict — MEDIUM becomes blocking", () => {
@@ -154,4 +200,63 @@ describe("severityBlocks", () => {
     expect(severityBlocks("CRITICAL", "moderate")).toBe(true);
     expect(severityBlocks("CRITICAL", "strict")).toBe(true);
   });
+});
+
+describe("JSON pipe-safe output", () => {
+  it("should produce pipe-safe JSON without banner in stdout", () => {
+    let stdout = "";
+    try {
+      stdout = execSync("node dist/main.js audit --format json 2>/dev/null", {
+        cwd: path.resolve(process.cwd()),
+        encoding: "utf-8",
+        timeout: 15000,
+      });
+    } catch (e: any) {
+      // Command may exit 1 on BLOCKED verdict — stdout still valid
+      stdout = e.stdout ?? e.stderr ?? "";
+    }
+    const parsed = JSON.parse(stdout);
+    expect(parsed.verdict).toBeDefined();
+    expect(parsed.severityMatrix).toBeDefined();
+    expect(parsed.metadata).toBeDefined();
+  }, 20000);
+
+  it("review-pr with --format json should produce pipe-safe JSON", () => {
+    const result = execSync("node dist/main.js review-pr --format json 2>/dev/null", {
+      cwd: path.resolve(process.cwd()),
+      encoding: "utf-8",
+      timeout: 15000,
+    });
+    const parsed = JSON.parse(result);
+    expect(parsed.verdict).toBeDefined();
+    expect(parsed.severityMatrix).toBeDefined();
+  }, 20000);
+});
+
+describe("riskTolerance integration", () => {
+  it("review-pr with riskTolerance strict makes MEDIUM risks blocking", async () => {
+    const report = await runAudit({
+      cwd: path.resolve(process.cwd()),
+      base: "main",
+      scope: "base",
+      riskTolerance: "strict",
+    });
+    const mediumRisks = report.risks.filter(r => r.severity === "MEDIUM");
+    for (const r of mediumRisks) {
+      expect(r.blocking).toBe(true);
+    }
+  }, 15000);
+
+  it("riskTolerance relaxed should NOT make MEDIUM risks blocking", async () => {
+    const report = await runAudit({
+      cwd: path.resolve(process.cwd()),
+      base: "main",
+      scope: "base",
+      riskTolerance: "relaxed",
+    });
+    const mediumRisks = report.risks.filter(r => r.severity === "MEDIUM");
+    for (const r of mediumRisks) {
+      expect(r.blocking).toBe(false);
+    }
+  }, 15000);
 });

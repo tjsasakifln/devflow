@@ -39,7 +39,7 @@ export async function reviewPrCommand(
   banner(pc.bold("\n📋 Devflow PR Review\n"));
   banner(pc.dim(`Reviewing changes against ${base}...\n`));
 
-  const opts: AuditOptions = { cwd, base, riskTolerance: tolerance };
+  const opts: AuditOptions = { cwd, base, riskTolerance: tolerance, scope: "base" };
   const report = await runAudit(opts);
 
   // Render based on format

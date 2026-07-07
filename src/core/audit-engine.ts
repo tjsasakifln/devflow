@@ -9,7 +9,7 @@
 
 import path from "node:path";
 import { captureGitContext } from "../kernel/utils/git-context.js";
-import { buildDiffModel } from "../adapters/git/diff-model.js";
+import { buildDiffModel, type DiffFile, type DiffModel } from "../adapters/git/diff-model.js";
 import { loadExclusionRules, filterExcludedFiles } from "../adapters/git/exclusion-rules.js";
 import { detectStackProfile, type StackProfile } from "../kernel/detection/stack.js";
 import { fileExists, safeReadFile } from "../kernel/utils/fs.js";
@@ -133,7 +133,7 @@ function scanFileForPatterns(
 
 // ── Feature detection (best-effort) ──
 
-async function detectFeature(cwd: string): Promise<{
+async function detectFeature(cwd: string, tolerance: "relaxed" | "moderate" | "strict"): Promise<{
   featureId: string | null;
   artifactRisks: Risk[];
   evidenceChecks: Evidence[];
@@ -182,7 +182,7 @@ async function detectFeature(cwd: string): Promise<{
               "missing-artifact",
               `Missing ${a.label} (${a.file}) — ${a.risk}`,
               `Run 'devflow next' to see what artifacts to create next, or use 'devflow audit' without feature setup for quick checks.`,
-              "moderate",
+              tolerance,
             ));
             evidenceChecks.push({
               type: "artifact",
@@ -266,14 +266,14 @@ async function detectFeature(cwd: string): Promise<{
       "missing-artifact",
       "No active Devflow feature — changes have no declared scope or requirements traceability",
       "For full governance, run 'devflow feature new <name>'. For quick checks, this audit still scans for dangerous patterns.",
-      "moderate",
+      tolerance,
     ));
     artifactRisks.push(createRisk(
       "LOW",
       "missing-evidence",
       "No adversarial review or gatekeep available without a feature",
       "Create a feature to enable adversarial review and gatekeeper approval.",
-      "moderate",
+      tolerance,
     ));
   }
 
@@ -316,74 +316,54 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
   let scopeDescription = "";
   const allRisks: Risk[] = [];
 
-  if (opts.staged && !opts.workingTree) {
-    // Staged changes only
-    const model = await buildDiffModel(cwd, { staged: true, workingTree: false });
-    changedFiles = model.stagedFiles.map(f => ({
-      path: f.path,
-      status: f.status as ChangedFile["status"],
-      additions: f.additions,
-      deletions: f.deletions,
-      language: detectLanguageFromPath(f.path),
-    }));
-    scopeDescription = `${changedFiles.length} staged file(s)`;
-  } else if (opts.workingTree && !opts.staged) {
-    // Working tree (unstaged) only
-    const model = await buildDiffModel(cwd, { staged: false, workingTree: true });
-    changedFiles = model.unstagedFiles.map(f => ({
-      path: f.path,
-      status: f.status as ChangedFile["status"],
-      additions: f.additions,
-      deletions: f.deletions,
-      language: detectLanguageFromPath(f.path),
-    }));
-    scopeDescription = `${changedFiles.length} unstaged file(s)`;
-  } else if (opts.base && !opts.staged && !opts.workingTree) {
-    // Base diff only
-    const model = await buildDiffModel(cwd, { base: opts.base, staged: true, workingTree: false });
-    changedFiles = model.stagedFiles.map(f => ({
-      path: f.path,
-      status: f.status as ChangedFile["status"],
-      additions: f.additions,
-      deletions: f.deletions,
-      language: detectLanguageFromPath(f.path),
-    }));
-    scopeDescription = `${changedFiles.length} file(s) vs ${opts.base}`;
-  } else {
-    // Default: all three scopes merged
-    const wdModel = await buildDiffModel(cwd, {});
-    const baseModel = await buildDiffModel(cwd, { base });
+  const scope = opts.scope ?? "all";
 
-    const stagedFiles: ChangedFile[] = wdModel.stagedFiles.map(f => ({
-      path: f.path,
-      status: f.status as ChangedFile["status"],
-      additions: f.additions,
-      deletions: f.deletions,
-      language: detectLanguageFromPath(f.path),
-    }));
-    const unstagedFiles: ChangedFile[] = wdModel.unstagedFiles.map(f => ({
-      path: f.path,
-      status: f.status as ChangedFile["status"],
-      additions: f.additions,
-      deletions: f.deletions,
-      language: detectLanguageFromPath(f.path),
-    }));
-    const baseDiffFiles: ChangedFile[] = baseModel.stagedFiles.map(f => ({
-      path: f.path,
-      status: f.status as ChangedFile["status"],
-      additions: f.additions,
-      deletions: f.deletions,
-      language: detectLanguageFromPath(f.path),
-    }));
-
-    // Merge and deduplicate by path
-    const merged = new Map<string, ChangedFile>();
-    for (const file of [...stagedFiles, ...unstagedFiles, ...baseDiffFiles]) {
-      merged.set(file.path, file);
+  let diffModel: DiffModel;
+  switch (scope) {
+    case "staged":
+      diffModel = await buildDiffModel(cwd, { staged: true, workingTree: false });
+      break;
+    case "working-tree":
+      diffModel = await buildDiffModel(cwd, { staged: false, workingTree: true });
+      break;
+    case "base":
+      diffModel = await buildDiffModel(cwd, { base: opts.base ?? "main", staged: true, workingTree: false });
+      break;
+    default: {
+      // Consolidate all three scopes
+      const staged = await buildDiffModel(cwd, { staged: true, workingTree: false });
+      const unstaged = await buildDiffModel(cwd, { staged: false, workingTree: true });
+      const base = await buildDiffModel(cwd, { base: opts.base ?? "main", staged: true, workingTree: false });
+      // Merge and deduplicate by file path
+      const seen = new Set<string>();
+      const merged: DiffFile[] = [];
+      for (const f of [...staged.files, ...unstaged.files, ...base.files]) {
+        if (!seen.has(f.path)) { seen.add(f.path); merged.push(f); }
+      }
+      diffModel = {
+        ...base,
+        files: merged,
+        stagedFiles: staged.files,
+        unstagedFiles: unstaged.files,
+      };
+      break;
     }
-    changedFiles = Array.from(merged.values());
+  }
 
-    scopeDescription = `${stagedFiles.length} staged, ${unstagedFiles.length} unstaged, ${baseDiffFiles.length} vs ${base} — ${changedFiles.length} unique file(s)`;
+  changedFiles = diffModel.files.map(f => ({
+    path: f.path,
+    status: f.status as ChangedFile["status"],
+    additions: f.additions,
+    deletions: f.deletions,
+    language: detectLanguageFromPath(f.path),
+  }));
+
+  switch (scope) {
+    case "staged": scopeDescription = "staged changes only"; break;
+    case "working-tree": scopeDescription = "unstaged working tree changes only"; break;
+    case "base": scopeDescription = `diff vs ${opts.base ?? "main"} only`; break;
+    case "all": scopeDescription = "staged, unstaged, and base diff"; break;
+    default: scopeDescription = "unknown scope";
   }
 
   // Apply exclusion rules
@@ -394,7 +374,7 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
 
   // Feature detection
   const { featureId, artifactRisks, evidenceChecks } =
-    await detectFeature(cwd);
+    await detectFeature(cwd, tolerance);
 
   allRisks.push(...artifactRisks);
 
@@ -462,15 +442,6 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
       }
     }
 
-    // Set file risk level based on max severity found
-    const fileRisks = allRisks.filter(r => r.file === file.path);
-    if (fileRisks.length > 0) {
-      const severities = fileRisks.map((r) => r.severity);
-      if (severities.includes("CRITICAL")) file.riskLevel = "CRITICAL";
-      else if (severities.includes("HIGH")) file.riskLevel = "HIGH";
-      else if (severities.includes("MEDIUM")) file.riskLevel = "MEDIUM";
-      else file.riskLevel = "LOW";
-    }
   }
 
   // Evidence for tooling
@@ -519,7 +490,7 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
   });
 
   // Working tree cleanliness
-  if (git.gitStatus === "dirty" && opts.staged === true) {
+  if (git.gitStatus === "dirty" && scope !== "all" && scope !== "working-tree") {
     allRisks.push(createRisk(
       "LOW",
       "governance",
@@ -529,9 +500,34 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
     ));
   }
 
+  // Deduplicate risks before verdict computation
+  const seen = new Set<string>();
+  const dedupedRisks: Risk[] = [];
+  for (const risk of allRisks) {
+    const key = `${risk.severity}|${risk.category}|${risk.file ?? ""}|${risk.line ?? ""}|${risk.description.slice(0, 60)}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      dedupedRisks.push(risk);
+    }
+  }
+  const effectiveRisks = dedupedRisks;
+
+  // Recompute file risk levels from deduplicated risks
+  for (const file of changedFiles) {
+    if (file.riskLevel) continue; // already set (deleted / large file)
+    const fileRisks = effectiveRisks.filter(r => r.file === file.path);
+    if (fileRisks.length > 0) {
+      const severities = fileRisks.map(r => r.severity);
+      if (severities.includes("CRITICAL")) file.riskLevel = "CRITICAL";
+      else if (severities.includes("HIGH")) file.riskLevel = "HIGH";
+      else if (severities.includes("MEDIUM")) file.riskLevel = "MEDIUM";
+      else file.riskLevel = "LOW";
+    }
+  }
+
   // Compute verdict
-  const severityMatrix = buildSeverityMatrix(allRisks);
-  const { verdict } = computeVerdict(allRisks, policyConfig);
+  const severityMatrix = buildSeverityMatrix(effectiveRisks);
+  const { verdict } = computeVerdict(effectiveRisks, policyConfig);
 
   // Missing evidences
   const missingEvidences = evidenceChecks
@@ -539,14 +535,14 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
     .map((e) => e.detail ?? e.label);
 
   // What could have shipped broken
-  const whatCouldHaveShippedBroken = allRisks
+  const whatCouldHaveShippedBroken = effectiveRisks
     .filter((r) => r.severity === "CRITICAL" || r.severity === "HIGH")
     .map((r) => `**${r.severity}:** ${r.description} — without this audit, this would have reached production silently`)
     .slice(0, 5);
 
-  if (whatCouldHaveShippedBroken.length === 0 && allRisks.length > 0) {
+  if (whatCouldHaveShippedBroken.length === 0 && effectiveRisks.length > 0) {
     whatCouldHaveShippedBroken.push(
-      `${allRisks.length} risk(s) identified — while none are critical, each represents technical debt that compounds over time`,
+      `${effectiveRisks.length} risk(s) identified — while none are critical, each represents technical debt that compounds over time`,
     );
   }
 
@@ -561,12 +557,12 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
   if (verdict === "PASS") {
     summaryParts.push("Audit passed with no blocking risks.");
   } else if (verdict === "WARN") {
-    summaryParts.push(`${allRisks.length} risk(s) identified, none blocking.`);
+    summaryParts.push(`${effectiveRisks.length} risk(s) identified, none blocking.`);
   } else if (verdict === "FAIL") {
-    const blockingCount = allRisks.filter((r) => r.blocking).length;
+    const blockingCount = effectiveRisks.filter((r) => r.blocking).length;
     summaryParts.push(`${blockingCount} blocking risk(s) found. Address before merging.`);
   } else {
-    summaryParts.push(`BLOCKED: ${allRisks.filter((r) => r.blocking).length} critical issues must be resolved.`);
+    summaryParts.push(`BLOCKED: ${effectiveRisks.filter((r) => r.blocking).length} critical issues must be resolved.`);
   }
   summaryParts.push(`${changedFiles.length} file(s) changed across ${changedFiles.filter((f) => f.language).length} language(s).`);
 
@@ -575,7 +571,7 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
   }
 
   // PR snippet
-  const prSnippet = buildPrSnippet(verdict, severityMatrix, changedFiles.length, allRisks.length, featureId, branch);
+  const prSnippet = buildPrSnippet(verdict, severityMatrix, changedFiles.length, effectiveRisks.length, featureId, branch);
 
   // Metadata
   const metadata: AuditMetadata = {
@@ -585,7 +581,7 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
     branch,
     base,
     executionMode: execMode,
-    workingTreeClean: git.gitStatus === "clean" || opts.staged === true,
+    workingTreeClean: git.gitStatus === "clean" || scope === "staged" || scope === "base",
   };
 
   return {
@@ -593,7 +589,7 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
     executiveSummary: summaryParts.join(" "),
     severityMatrix,
     changedFiles,
-    risks: allRisks,
+    risks: effectiveRisks,
     evidences: evidenceChecks,
     missingEvidences,
     metadata,

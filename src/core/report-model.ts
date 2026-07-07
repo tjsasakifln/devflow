@@ -81,8 +81,8 @@ export type EvidenceType =
 export interface AuditOptions {
   cwd: string;
   base?: string;
-  staged?: boolean;
-  workingTree?: boolean;
+  /** Explicit audit scope. Default "all" for audit command, "base" for review-pr. */
+  scope?: "all" | "staged" | "working-tree" | "base";
   riskTolerance?: "relaxed" | "moderate" | "strict";
   format?: "markdown" | "html" | "json";
   output?: string;
