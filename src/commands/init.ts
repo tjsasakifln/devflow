@@ -130,6 +130,45 @@ export async function initCommand(cwd: string): Promise<void> {
     createdPaths.push(planned.dotDevflowDir);
     createdPaths.push(planned.devArtifactsDir);
 
+    // Step 1b: Copy tool configs (eslint, dependency-cruiser, vitest, verify-all)
+    try {
+      const urlMod = await import("node:url");
+      const pathMod = await import("node:path");
+      const __filename = urlMod.fileURLToPath(import.meta.url);
+      const __dirname = pathMod.dirname(__filename);
+      // Try both paths: from dist (compiled) and from src (development)
+      const distPath = path.join(__dirname, "..", "..", "src", "kernel", "artifacts", "tool-configs");
+      const devPath = path.join(__dirname, "..", "kernel", "artifacts", "tool-configs");
+      let toolConfigsSource: string | null = null;
+
+      // fs.access to check which path exists
+      try {
+        await fs.access(distPath);
+        toolConfigsSource = distPath;
+      } catch {
+        try {
+          await fs.access(devPath);
+          toolConfigsSource = devPath;
+        } catch {
+          // Neither path — tool configs not bundled
+        }
+      }
+
+      if (toolConfigsSource) {
+        const toolConfigsTarget = path.join(planned.dotDevflowDir);
+        const files = await fs.readdir(toolConfigsSource);
+        for (const file of files) {
+          const src = path.join(toolConfigsSource, file);
+          const dest = path.join(toolConfigsTarget, file);
+          try {
+            await fs.copyFile(src, dest);
+          } catch { /* skip individual file errors */ }
+        }
+      }
+    } catch {
+      // Tool configs copy is best-effort — not critical for init
+    }
+
     // Step 2: Inspect project (already done in pre-validation, reuse)
     console.log(pc.blue("→") + " Inspecting project...");
 

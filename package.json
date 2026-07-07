@@ -11,6 +11,7 @@
   "files": [
     "dist/",
     "templates/",
+    "src/kernel/artifacts/tool-configs/",
     "LICENSE",
     "README.md",
     "CLAUDE.md"
