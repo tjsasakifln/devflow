@@ -1,6 +1,6 @@
 {
   "name": "@tjsasakinpm/devflow",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "PR governance for AI-generated code — reduce risk, enforce evidence, produce auditable trails. Fool-resistant, not fool-proof.",
   "type": "module",
   "main": "./dist/main.js",
