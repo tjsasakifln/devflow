@@ -39,19 +39,45 @@ O Reversa escreve apenas em `.reversa/`, `_reversa_sdd/`, `_reversa_docs/` e `_r
 > todos os checks bloqueantes passando, CI verde (em modo strict/release),
 > e ator diferente do implementador (Constitution C12).
 
+## Instalação
+
+```bash
+npx @tjsasakinpm/devflow install    # primeiro uso guiado
+npm install -g @tjsasakinpm/devflow # instalação global
+```
+
 ## Comandos Devflow
 
+### STABLE (implementados e testados)
+- `devflow install [--dry-run] [--yes] [--review-mode]` — setup guiado primeiro uso
 - `devflow init` — inicializar Devflow no diretório atual
 - `devflow status` — estado do projeto, confiança, evidências
-- `devflow next` — próxima ação recomendada
-- `devflow feature new <name> [--actor]` — criar feature workspace
+- `devflow next [--diagnose]` — próxima ação recomendada
+- `devflow feature new <name> [--actor] [--non-interactive]` — criar feature workspace
+- `devflow feature prompt <id> [--copy] [--save]` — gerar prompt de implementação para IA
 - `devflow feature complete <id>` — 25 checks de Definition of Done
-- `devflow gatekeep <id> --approve|--reject [--actor]` — aprovação independente (requer flag explícita)
-- `devflow adversarial-review <id>` — 12 vetores de ataque (inclui bypass do próprio devflow)
-- `devflow doctor [--fix]` — diagnóstico e correção
+- `devflow gatekeep <id> --approve|--reject [--actor]` — aprovação independente
+- `devflow adversarial-review <id>` — 12 vetores de ataque
+- `devflow doctor [--fix] [--dry-run]` — diagnóstico e correção
 - `devflow update-cockpit` — regenerar DEVFLOW.md
+- `devflow index` — mapear estrutura do projeto
+- `devflow config set <key> <value>` — configurar reviewMode, executionMode
+
+### EXPERIMENTAL
+- `devflow discover` — análise brownfield (4 relatórios em _devflow/discovery/)
 
 Opção global: `--mode local|experimental|strict|release`
+
+## Fluxos de Primeiro Uso
+
+### Greenfield (projeto novo)
+`install` → `init` → `feature new` → `next` → preencher artefatos → `feature prompt` → codar
+
+### Brownfield (código existente)
+`init` → `discover` → ler relatórios → `feature new` → `legacy-impact.md` → codar
+
+### Com Agente de IA
+Ler `DEVFLOW.md` → respeitar "Current Instruction for Agents" → nunca codar antes de `feature-coding-ready`
 
 ## Princípios
 
