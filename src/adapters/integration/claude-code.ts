@@ -147,13 +147,13 @@ export function generateSlashCommandConfig(): string {
     {
       slash_commands: {
         devflow: {
-          command: "npx -y dev-flow",
+          command: "npx -y @tjsasakinpm/devflow",
           description:
             "Devflow — project state and next action engine",
           args: true,
         },
         "devflow-gatekeep": {
-          command: "npx -y dev-flow gatekeep",
+          command: "npx -y @tjsasakinpm/devflow gatekeep",
           description:
             "Devflow Gatekeeper — approve or reject feature completion",
           args: false,

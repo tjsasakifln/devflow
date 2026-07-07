@@ -2,8 +2,8 @@
 
 > fool-resistant, evidence-driven, engineered-by-default: state-aware workflow harness for AI-assisted software development
 
-[![npm version](https://img.shields.io/npm/v/dev-flow)](https://www.npmjs.com/package/dev-flow)
-[![npm package](https://img.shields.io/badge/npx-dev--flow_install-blue)](https://www.npmjs.com/package/dev-flow)
+[![npm version](https://img.shields.io/npm/v/@tjsasakinpm/devflow)](https://www.npmjs.com/package/@tjsasakinpm/devflow)
+[![npm package](https://img.shields.io/badge/npx-dev--flow_install-blue)](https://www.npmjs.com/package/@tjsasakinpm/devflow)
 [![node >= 18](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -40,7 +40,7 @@ Starting from scratch or a minimal codebase.
 
 ```bash
 # 1. Install Devflow in your project
-npx dev-flow init
+npx @tjsasakinpm/devflow init
 
 # 2. Check your project state
 devflow status
@@ -245,9 +245,9 @@ devflow gatekeep my-feature --approve  # If actor matches implementer
 ## Installation
 
 ```bash
-npm install -g dev-flow
+npm install -g @tjsasakinpm/devflow
 # or
-npx dev-flow init
+npx @tjsasakinpm/devflow init
 ```
 
 Requires Node.js >= 18.
