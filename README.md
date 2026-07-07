@@ -10,14 +10,16 @@
 
 ## What Devflow Does
 
-- Detects project state across 26 states (greenfield, brownfield, feature phases)
+- Detects project state across 22 states (greenfield, brownfield, feature phases)
 - Enforces a spec-driven workflow with explicit state transitions
 - Runs 25 Definition of Done checks before feature completion
+- Generates structured implementation prompts for AI agents (Claude Code, Cursor)
 - Provides independent gatekeeper review (implementer ≠ approver, Constitution C12)
 - Generates auditable evidence (logs with actor identity, hashes, git context)
 - Adversarial review across 12 attack vectors (including devflow bypass attempts)
 - Pre-action guards prevent coding without prerequisite artifacts
 - 4 execution modes: local, experimental, strict, release
+- Stack-adaptive validation: TypeScript, JavaScript, Python, Go, Rust, PHP, Java
 
 ## What Devflow Does NOT Do
 
@@ -27,43 +29,148 @@
 - Does **not** guarantee production-readiness from passing checks
 - Does **not** automatically detect all code-spec drift
 - Does **not** eliminate the need for qualified engineering judgment
+- Does **not** write code for you — it prepares the ground so code is correct by construction
 
-## Guarantees
+## First Use — Three Paths
 
-- Every gatekeep decision is logged with actor identity, commit SHA, branch, mode, and version
-- Every Definition of Done check produces pass/fail with remediation guidance
-- Every state transition is documented in an explicit transition table
-- Every adversarial review produces a per-vector report (pass/fail/inconclusive)
-- Approval requires explicit `--approve` flag — never implicit
-- In strict/release mode, unknown actors and missing CI block approval
+### Path 1: Greenfield (New Project)
 
-## Quick Start (Happy Path)
+Starting from scratch or a minimal codebase.
 
 ```bash
-npx @devflow/cli init              # Initialize in current directory
-devflow status                      # See current project state
-devflow next                        # Recommended next action
-devflow feature new "my-feature"    # Create feature workspace
-# Edit artifacts: requirements.md → roadmap.md → actions.md → test-plan.md
-# Implement following actions.md
-devflow adversarial-review my-feature # 12 attack vectors
-devflow feature complete my-feature # Run 25 DoD checks
-devflow gatekeep my-feature --approve --actor "reviewer-name"
+# 1. Install Devflow in your project
+npx @devflow/cli init
+
+# 2. Check your project state
+devflow status
+
+# 3. See what to do next
+devflow next
+
+# 4. Create your first feature workspace
+devflow feature new "user-authentication"
+
+# 5. Fill in the requirements interactively (or edit requirements.md directly)
+#    The wizard asks: problem, users, affected areas, constraints, out-of-scope
+
+# 6. Check what's still needed
+devflow next --diagnose
+
+# 7. Fill remaining artifacts: roadmap.md, actions.md, test-plan.md
+#    Use devflow next after each to see what's still missing
+
+# 8. When state reaches feature-coding-ready, generate the AI prompt
+devflow feature prompt 001-user-authentication
+
+# 9. Give the prompt to your AI agent (Claude Code, Cursor, etc.)
+#    The agent now has: goals, architecture, actions, tests, forbidden files
+
+# 10. After implementation, verify
+devflow feature complete 001-user-authentication
+devflow adversarial-review 001-user-authentication
+devflow gatekeep 001-user-authentication --approve --actor "reviewer-name"
 ```
 
+**Key rule**: Do not start coding before `feature-coding-ready` state. The system blocks premature implementation.
+
+### Path 2: Brownfield (Existing Codebase)
+
+Working with an existing project that was not built with Devflow.
+
+```bash
+# 1. Initialize Devflow in the existing project
+devflow init
+
+# 2. Discover and map the existing codebase
+devflow discover
+# Generates reports in _devflow/discovery/:
+#   system-map.md    — structure, entrypoints, modules, dependencies
+#   risk-map.md      — sensitive files, coupling, TODO/FIXME, untested areas
+#   testing-baseline.md — how to run tests/lint/typecheck, current state
+#   change-zones.md  — safe / caution / do-not-touch zone classification
+
+# 3. Read the discovery reports before touching any code
+#    Understand what exists, what's risky, what's untested
+
+# 4. Create a feature workspace
+devflow feature new "add-payment-integration"
+
+# 5. The feature workspace references discovery reports automatically
+#    Fill requirements.md considering existing architecture constraints
+
+# 6. Before coding, create legacy-impact.md
+#    Document what existing code will be affected, migration strategy, rollback plan
+
+# 7. Proceed through the same pipeline as greenfield from here
+devflow next --diagnose
+```
+
+**Key rule**: In brownfield, you must understand the terrain before digging. Discovery reports prevent breaking existing behavior.
+
+### Path 3: With an AI Agent (Claude Code, Cursor, etc.)
+
+When using an AI coding assistant together with Devflow.
+
+```bash
+# 1. Tell your agent to read DEVFLOW.md first
+#    Every Devflow project has a DEVFLOW.md cockpit file
+#    Section: "Mandatory Context for Any Agent Before Modifying Code"
+
+# 2. The agent must check the current coding state
+#    CAN CODE / CANNOT CODE / CODE COMPLETE — stated at the top
+
+# 3. If state is NOT feature-coding-ready, the agent must refuse to write code
+#    Instead, help fill artifacts: requirements, roadmap, actions, test-plan
+
+# 4. When ready, use the implementation prompt
+devflow feature prompt 001-my-feature --copy
+#    Paste into Claude Code / Cursor with the full context
+
+# 5. The agent works action-by-action, logging each step
+#    Updates implementation-log.jsonl after every action
+#    Runs validation commands after every action
+```
+
+**Key rule**: An agent that writes code before `feature-coding-ready` produces output with conviction but no correctness guarantee. Devflow exists to prevent exactly that.
+
 ## Commands
+
+### STABLE — Fully implemented and tested
 
 | Command | Description |
 |---------|-------------|
 | `devflow init` | Initialize Devflow in current directory |
 | `devflow status [--json] [--verbose]` | Show project state, confidence, evidence |
-| `devflow next [--json]` | Recommend next best action |
-| `devflow feature new <name> [--actor]` | Create feature workspace |
+| `devflow next [--json] [--diagnose]` | Recommend next best action |
+| `devflow feature new <name> [--actor] [--non-interactive]` | Create feature workspace |
 | `devflow feature complete <id>` | Run 25 Definition of Done checks |
+| `devflow feature prompt <id> [--copy] [--save] [--output]` | Generate AI implementation prompt |
 | `devflow gatekeep <id> --approve\|--reject [--actor]` | Independent gatekeeper review |
 | `devflow adversarial-review <id>` | Adversarial review — 12 attack vectors |
 | `devflow doctor [--fix] [--dry-run]` | Diagnose and fix common issues |
 | `devflow update-cockpit` | Regenerate DEVFLOW.md cockpit |
+| `devflow index` | Map project structure and build search index |
+
+### EXPERIMENTAL — Partial implementation, may have rough edges
+
+| Command | Description |
+|---------|-------------|
+| `devflow discover` | Discover and document brownfield project structure |
+| `devflow eval run` | Run evaluation suite and generate report |
+
+### PREVIEW — Placeholder, prints intention only
+
+| Command | Manual Alternative |
+|---------|-------------------|
+| `devflow ai init` | Set `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` env vars directly |
+| `devflow requirements audit <id>` | Review `_devflow/features/<id>/requirements.md` against pedagogical criteria |
+| `devflow design review <id>` | Review `_devflow/features/<id>/roadmap.md` for architectural soundness |
+| `devflow tests review <id>` | Review `_devflow/features/<id>/test-plan.md` for coverage gaps |
+| `devflow actions generate <id>` | Use the actions template in `_devflow/features/<id>/` |
+| `devflow drift check <id>` | Compare requirements.md acceptance criteria against implementation-log.jsonl |
+| `devflow adversarial-review-ai <id>` | Use `devflow adversarial-review` (deterministic, 12 vectors, fully implemented) |
+| `devflow trace <runId>` | Run artifacts will be in `.devflow/ai/runs/` when available |
+| `devflow promote <proposalId>` | Copy artifacts manually from `.devflow/ai/runs/` to `_devflow/features/` |
 
 ### Global Options
 
@@ -80,7 +187,7 @@ Modes: `local` (default), `experimental`, `strict`, `release`
 | strict | blocking | blocking | blocking | blocking |
 | release | blocking | blocking | blocking | blocking |
 
-## Project States (26-state engine)
+## Project States (22-state engine)
 
 ### Project Detection
 `no-project` → `greenfield-idea` → `greenfield-specified`
@@ -100,9 +207,6 @@ Modes: `local` (default), `experimental`, `strict`, `release`
 `drift-detected` — code-spec divergence detected
 `blocked` — explicit blocker prevents progress
 
-### Legacy States (deprecated)
-`feature-planning`, `feature-planned`, `feature-todo`
-
 ## Output Files
 
 | File | Purpose |
@@ -114,7 +218,8 @@ Modes: `local` (default), `experimental`, `strict`, `release`
 | `.devflow/audits/adversarial-review.md` | Per-vector adversarial review report |
 | `.devflow/audits/dod-summary.md` | Definition of Done summary |
 | `_devflow/features/<id>/` | Feature workspace (artifacts, logs) |
-| `DEVFLOW.md` | Project cockpit — auto-generated status dashboard |
+| `_devflow/discovery/` | Brownfield discovery reports |
+| `DEVFLOW.md` | Project cockpit — auto-generated, read by AI agents before any action |
 | `CLAUDE.md` | Devflow section for Claude Code integration |
 
 ## Dangerous Path (What NOT to Do)
@@ -131,6 +236,9 @@ devflow gatekeep my-feature --approve  # If actor matches implementer
 
 # Coding without artifacts — BLOCKED (pre-action guard)
 # Missing: requirements.md, roadmap.md, actions.md, test-plan.md, etc.
+
+# Using devflow feature prompt before requirements are complete
+# The command will refuse — missing artifacts block prompt generation
 ```
 
 ## Installation
@@ -146,7 +254,7 @@ Requires Node.js >= 18.
 ## Development
 
 ```bash
-git clone https://github.com/devflow/devflow
+git clone https://github.com/tjsasakifln/devflow
 cd devflow
 npm install
 npm run build
