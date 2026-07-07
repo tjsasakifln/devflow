@@ -58,6 +58,83 @@ export async function gatekeep(
   const mode = config.executionMode || "local";
   const reviewMode = config.reviewMode || "independent";
 
+  // ── Validate implementation log structure (strict/release) ──
+  if ((mode === "strict" || mode === "release") && logExists) {
+    const raw = await safeReadFile(logPath);
+    const logErrors: string[] = [];
+    let entryCount = 0;
+
+    if (raw) {
+      const lines = raw.trim().split("\n").filter((l) => l.trim());
+      entryCount = lines.length;
+
+      if (entryCount === 0) {
+        logErrors.push("Implementation log is empty — no entries found.");
+      }
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i] ?? "";
+        try {
+          const entry = JSON.parse(line);
+          const missing: string[] = [];
+          if (!entry.timestamp) missing.push("timestamp");
+          if (!entry.actor) missing.push("actor");
+          if (!entry.actionId) missing.push("actionId");
+          if (!entry.status) missing.push("status");
+          if (missing.length > 0) {
+            logErrors.push(`Line ${i + 1}: missing required fields: ${missing.join(", ")}`);
+          }
+        } catch {
+          logErrors.push(`Line ${i + 1}: invalid JSON — ${line.slice(0, 80)}`);
+        }
+      }
+    } else {
+      logErrors.push("Implementation log exists but is unreadable or empty.");
+    }
+
+    if (logErrors.length > 0) {
+      console.log(pc.red(`\n⛔ Gatekeep Refused — Implementation Log Validation Failed (mode: ${mode})\n`));
+      console.log(pc.red(`   ${logErrors.length} issue(s) found in implementation-log.jsonl:\n`));
+      for (const err of logErrors.slice(0, 10)) {
+        console.log(pc.red(`   • ${err}`));
+      }
+      if (logErrors.length > 10) {
+        console.log(pc.dim(`   ... and ${logErrors.length - 10} more issues`));
+      }
+      console.log();
+      console.log(pc.yellow("   Required fields per entry: timestamp, actor, actionId, filesChanged, status"));
+      console.log(pc.yellow("   Fix the log and re-run gatekeep.\n"));
+
+      // Log validation refusal
+      const auditDir = path.join(rootPath, ".devflow", "audits");
+      try { execSync(`mkdir -p "${auditDir}"`, { encoding: "utf-8" }); } catch { /* ok */ }
+      const refusalEntry = {
+        timestamp: new Date().toISOString(),
+        gatekeeper,
+        implementer: implementerActor,
+        featureId,
+        decision: "refused",
+        reason: `Log validation failed: ${logErrors.length} issue(s) in implementation-log.jsonl`,
+        actorOrigin,
+        commitSha,
+        branch: gitBranch,
+        devflowVersion: getVersion(),
+        executionMode: mode,
+      };
+      const gatekeepLogPath = path.join(auditDir, "gatekeep-log.jsonl");
+      const existing = await safeReadFile(gatekeepLogPath);
+      await atomicWrite(gatekeepLogPath, (existing || "") + JSON.stringify(refusalEntry) + "\n");
+      return;
+    }
+  } else if (!logExists && (mode === "strict" || mode === "release")) {
+    console.log(pc.red(`\n⛔ Gatekeep Refused — No Implementation Log (mode: ${mode})\n`));
+    console.log(pc.red("   implementation-log.jsonl not found."));
+    console.log(pc.red("   In strict/release modes, a complete implementation log is required.\n"));
+    console.log(pc.yellow("   The log must contain entries with: timestamp, actor, actionId, filesChanged, status"));
+    console.log(pc.yellow("   Run implementation actions and log each step.\n"));
+    return;
+  }
+
   // ── Enforce implementer ≠ approver ──
   if (reviewMode === "independent") {
     if (gatekeeper === implementerActor && implementerActor !== "unknown") {
