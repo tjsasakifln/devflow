@@ -53,4 +53,5 @@ export const DEFAULTS: DevflowConfig = {
     enabled: true,
     requireDifferentActor: true,
   },
+  reviewMode: "independent",
 };

@@ -107,6 +107,8 @@ export interface DevflowConfig {
     enabled: boolean;
     requireDifferentActor: boolean;
   };
+  /** Review mode: independent requires different actor; solo-hardened allows self-approval with compensating evidence */
+  reviewMode: "independent" | "solo-hardened";
 }
 
 export interface LogEntry {
