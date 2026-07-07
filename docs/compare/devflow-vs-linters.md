@@ -18,6 +18,14 @@ A linter can tell you that a variable violates camelCase convention. Devflow can
 
 These are fundamentally different guarantees. A green linter means the code is syntactically consistent. A green Devflow audit means the code was produced through a governed, auditable engineering process. You need both: linters for code quality, Devflow for engineering integrity.
 
+### How Linters Work
+
+Linters parse source code into an AST (Abstract Syntax Tree) and apply rules that match against tree patterns. ESLint uses pluggable rules for JavaScript/TypeScript. Ruff is a fast Python linter written in Rust. golangci-lint aggregates multiple Go linters. All operate on source text and produce line-numbered warnings and errors. They are typically run in pre-commit hooks, editor integrations, and CI pipelines. Linters are fast, deterministic, and language-specific.
+
+### How Devflow Works
+
+Devflow does not parse source code. It reads governance artifacts: `.devflow/config.json`, feature workspaces in `_devflow/features/`, implementation logs, adversarial review reports, and gatekeep records. It runs checks against these artifacts to determine whether the engineering process is complete and compliant. Devflow is language-agnostic at the governance level but stack-aware for pipeline gates — it adapts checks based on whether the project uses TypeScript, Python, Go, Rust, PHP, or Java.
+
 ## Comparison
 
 | Dimension | Devflow | Linters (ESLint, Ruff, golangci-lint, Biome) |
@@ -41,6 +49,18 @@ These are fundamentally different guarantees. A green linter means the code is s
 | **False positives** | Low — checks for existence of artifacts, not content quality | Variable — depends on ruleset strictness; some rules produce noise |
 | **Can block PRs** | Yes — governance gates can reject based on missing engineering evidence | Yes — lint errors can block CI checks |
 | **Scope** | Engineering process and governance artifacts | Source code text only |
+| **Runtime** | Sub-second (artifact reading) | Variable — depends on codebase size and rule count |
+| **Deterministic** | Yes — same input always produces same result | Yes — same code always produces same lint results |
+
+## Common Misconceptions
+
+- **"Linters and Devflow check the same thing."** Linters check code syntax and style. Devflow checks engineering process and evidence. A green linter means the code is well-formatted; a green Devflow audit means the change was planned, tested, adversarially reviewed, and approved.
+
+- **"If the linter passes, the code is fine."** Linters catch style violations and some bug patterns, but they do not check whether requirements exist, whether tests cover the intended behavior, or whether the change was independently reviewed. Code can be perfectly formatted and completely unjustified.
+
+- **"Devflow replaces linting."** Devflow does not check code syntax, style, or formatting. You still need ESLint, Ruff, or your linter of choice to enforce code conventions.
+
+- **"You need to run linters after Devflow."** Run linters first (they are fast and catch surface-level issues), then run Devflow for governance. Or run both in parallel in a pre-commit hook. The order does not matter because they check independent concerns.
 
 ## When to Use Each
 
@@ -73,14 +93,28 @@ Devflow and linters address different layers of the software quality stack:
 
 All three layers are independent and complementary. A change can pass linting, fail tests, and have no governance evidence. Or it can have full governance evidence, pass all tests, and still have style issues that a linter catches.
 
+## Real-World Scenario
+
+Your team uses Claude Code to generate a new user authentication module. The code passes ESLint with zero warnings — it is clean, well-formatted, and uses modern JavaScript patterns. However:
+
+- There are no requirements documented. The module authenticates users but the requirements specified OAuth2 with refresh tokens, yet the implementation uses session cookies. ESLint does not know this.
+- No test plan exists. Unit tests pass but cover only 40% of the expected behaviors (those that satisfy the compiler rather than the spec).
+- No adversarial review was performed. The code uses `eval()` to parse a token — a pattern that Claude Code should not have generated and that adversarial review would flag.
+- The implementer approved their own change. No independent gate evaluation was recorded.
+
+ESLint gives a clean pass. Devflow flags all four failures: requirements missing, test plan absent, adversarial review not performed, implementer == approver. The change is blocked. Governance catches what style cannot.
+
 ## Quick Test
 
 ```bash
-# Linter check — example with ESLint
+# Linter check — example with ESLint (JavaScript/TypeScript)
 npx eslint src/
 
 # Linter check — example with Ruff (Python)
 ruff check src/
+
+# Linter check — example with golangci-lint (Go)
+golangci-lint run ./...
 
 # Devflow governance audit — no configuration needed
 devflow audit
@@ -107,6 +141,7 @@ The practical difference: `npx eslint src/` might flag an unused import. `devflo
 - Linters do not check engineering process. They will not tell you that requirements are missing, that the implementer approved their own change, or that adversarial review was skipped.
 - Devflow's evidence checks verify that artifacts exist, not that they are correct or complete. A requirements file with placeholder content passes the check.
 - Linters produce high-confidence results for rule violations but may produce noise from overly strict rulesets.
+- Neither tool catches runtime errors, integration failures, or performance issues.
 
 ## Next Steps
 
