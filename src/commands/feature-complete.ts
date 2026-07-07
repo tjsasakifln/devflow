@@ -10,6 +10,11 @@ import {
   validateActions,
 } from "../artifacts/validator.js";
 import { runConstitutionCheck, getConstitutionCompliance } from "../constitution/checker.js";
+import { detectStackProfile } from "../kernel/detection/stack.js";
+import {
+  toolFailedRemediation,
+  type Remediation,
+} from "../kernel/errors/remediation.js";
 import pc from "picocolors";
 
 interface DoDCheck {
@@ -74,6 +79,220 @@ export async function featureCompleteInternal(
   };
 }
 
+/**
+ * Build stack-adaptive tool check definitions from StackProfile.
+ *
+ * For TypeScript/JavaScript: prefers package.json scripts (test, lint, typecheck)
+ * before falling back to detected tools (vitest, jest, eslint, tsc).
+ * For other stacks: uses detected commands from detectStackProfile.
+ * Unknown stack: returns diagnostic-mode checks that ask for explicit config.
+ */
+interface ToolCheckDef {
+  id: string;
+  name: string;
+  command: string | null;
+  remediation: Remediation;
+  blocking: boolean;
+}
+
+async function buildStackToolChecks(rootPath: string): Promise<ToolCheckDef[]> {
+  const stack = await detectStackProfile(rootPath);
+  const checks: ToolCheckDef[] = [];
+
+  // ── Helper: read package.json scripts ──
+  let pkgScripts: Record<string, string> = {};
+  try {
+    const pkgRaw = await safeReadFile(path.join(rootPath, "package.json"));
+    if (pkgRaw) {
+      const pkg = JSON.parse(pkgRaw);
+      pkgScripts = pkg.scripts ?? {};
+    }
+  } catch {
+    // No package.json or invalid JSON
+  }
+
+  const pm = stack.packageManager ?? "npm";
+  const pmRun = pm === "yarn" ? "yarn" : pm === "pnpm" ? "pnpm" : "npm run";
+
+  // ── 1. Test check ──
+  const testScript = pkgScripts.test;
+  let testCmd: string | null = null;
+  let testRemediation: Remediation;
+
+  if (testScript) {
+    // Use package.json script directly
+    testCmd = pm === "yarn" ? "yarn test" : pm === "pnpm" ? "pnpm test" : "npm test";
+    testRemediation = toolFailedRemediation("Tests", testCmd, "Run and fix failing tests.");
+  } else if (stack.testCommand) {
+    testCmd = stack.testCommand;
+    testRemediation = toolFailedRemediation(stack.testFramework ?? "Tests", testCmd, "Run and fix failing tests.");
+  } else if (stack.language === "unknown") {
+    testCmd = null;
+    testRemediation = {
+      title: "Test command not configured",
+      whyMatters: "Tests prevent regressions and verify correctness.",
+      impact: "No automated test verification. Bugs may go undetected.",
+      suggestedFix: 'Add a "test" script to package.json, or configure testCommand in .devflow/config.json deterministicGates.',
+      minimalExample: '"scripts": { "test": "vitest run" }',
+      severity: "blocking",
+    };
+  } else {
+    testCmd = stack.testCommand;
+    testRemediation = toolFailedRemediation("Tests", stack.testCommand ?? "test", "Run and fix failing tests.");
+  }
+
+  checks.push({
+    id: "5",
+    name: "Testes passam",
+    command: testCmd,
+    remediation: testRemediation,
+    blocking: true,
+  });
+
+  // ── 2. TypeCheck ──
+  let typeCheckCmd: string | null = null;
+  let typeCheckRemediation: Remediation;
+
+  if (pkgScripts.typecheck) {
+    typeCheckCmd = `${pmRun} typecheck`;
+    typeCheckRemediation = toolFailedRemediation("TypeCheck", typeCheckCmd, "Fix type errors and re-run.");
+  } else if (stack.typeCheckCommand) {
+    typeCheckCmd = stack.typeCheckCommand;
+    typeCheckRemediation = toolFailedRemediation(stack.typeChecker ?? "TypeCheck", typeCheckCmd, "Fix type errors and re-run.");
+  } else if (stack.language === "javascript") {
+    // JS projects: typecheck is optional, skip
+    typeCheckCmd = null;
+    typeCheckRemediation = {
+      title: "TypeCheck skipped (JavaScript project)",
+      whyMatters: "JavaScript has no static types. Consider adding TypeScript or JSDoc.",
+      impact: "No type-level verification.",
+      suggestedFix: "Add TypeScript to the project for type safety.",
+      minimalExample: "npm install --save-dev typescript",
+      severity: "advisory",
+    };
+  } else if (stack.language === "go" || stack.language === "rust") {
+    // Go/Rust: type checking is built into compilation
+    typeCheckCmd = stack.typeCheckCommand;
+    typeCheckRemediation = {
+      title: "TypeCheck via compiler",
+      whyMatters: `${stack.language} compiler handles type checking natively.`,
+      impact: "Build failures will catch type errors.",
+      suggestedFix: `Run ${stack.testCommand ?? "build"} to verify compilation.`,
+      minimalExample: stack.testCommand ?? "cargo build",
+      severity: "blocking",
+    };
+    if (!typeCheckCmd) typeCheckCmd = null; // skip if no explicit command
+  } else if (stack.language === "unknown") {
+    typeCheckCmd = null;
+    typeCheckRemediation = {
+      title: "TypeCheck not configured",
+      whyMatters: "Type checking catches whole classes of bugs at compile time.",
+      impact: "No static type verification.",
+      suggestedFix: 'Configure typeCheckCommand in .devflow/config.json deterministicGates, or add a "typecheck" script to package.json.',
+      minimalExample: '"scripts": { "typecheck": "tsc --noEmit" }',
+      severity: "advisory",
+    };
+  } else {
+    typeCheckCmd = stack.typeCheckCommand;
+    typeCheckRemediation = toolFailedRemediation(stack.typeChecker ?? "TypeCheck", typeCheckCmd ?? "typecheck", "Fix type errors and re-run.");
+  }
+
+  checks.push({
+    id: "6",
+    name: "Typecheck passa",
+    command: typeCheckCmd,
+    remediation: typeCheckRemediation,
+    blocking: stack.language !== "javascript", // non-blocking for plain JS
+  });
+
+  // ── 3. Lint check ──
+  const lintScript = pkgScripts.lint;
+  let lintCmd: string | null = null;
+  let lintRemediation: Remediation;
+
+  if (lintScript) {
+    lintCmd = `${pmRun} lint`;
+    lintRemediation = toolFailedRemediation("Lint", lintCmd, "Fix lint violations and re-run.");
+  } else if (stack.lintCommand) {
+    lintCmd = stack.lintCommand;
+    lintRemediation = toolFailedRemediation(stack.linter ?? "Lint", lintCmd, "Fix lint violations and re-run.");
+  } else if (stack.language === "unknown") {
+    lintCmd = null;
+    lintRemediation = {
+      title: "Lint not configured",
+      whyMatters: "Linting enforces code style and catches common errors.",
+      impact: "No style/error enforcement. Code quality may degrade.",
+      suggestedFix: 'Add a "lint" script to package.json, or configure lintCommand in .devflow/config.json.',
+      minimalExample: '"scripts": { "lint": "eslint src/" }',
+      severity: "advisory",
+    };
+  } else {
+    lintCmd = stack.lintCommand;
+    lintRemediation = toolFailedRemediation(stack.linter ?? "Lint", lintCmd ?? "lint", "Fix lint violations and re-run.");
+  }
+
+  checks.push({
+    id: "7",
+    name: "Lint passa",
+    command: lintCmd,
+    remediation: lintRemediation,
+    blocking: true,
+  });
+
+  // ── 4. Coverage check ──
+  const coverageScript = pkgScripts["test:coverage"] ?? pkgScripts.coverage;
+  let coverageCmd: string | null = null;
+  let coverageRemediation: Remediation;
+
+  if (coverageScript) {
+    coverageCmd = `${pmRun} ${pkgScripts["test:coverage"] ? "test:coverage" : "coverage"}`;
+    coverageRemediation = toolFailedRemediation("Coverage", coverageCmd, "Add tests to reach 80% coverage.");
+  } else if (stack.language === "typescript" || stack.language === "javascript") {
+    // Default to vitest coverage
+    coverageCmd = "npx vitest run --coverage";
+    coverageRemediation = toolFailedRemediation("Coverage", coverageCmd, "Add tests to reach 80% coverage.");
+  } else if (stack.language === "python") {
+    coverageCmd = "python -m pytest --cov=src/ --cov-report=term --cov-fail-under=80";
+    coverageRemediation = toolFailedRemediation("Coverage", coverageCmd, "Add tests to reach 80% coverage.");
+  } else if (stack.language === "go") {
+    coverageCmd = "go test -cover ./...";
+    coverageRemediation = toolFailedRemediation("Coverage", coverageCmd, "Add tests to reach 80% coverage.");
+  } else if (stack.language === "rust") {
+    coverageCmd = "cargo tarpaulin --out Html --fail-under 80";
+    coverageRemediation = toolFailedRemediation("Coverage", coverageCmd, "Install cargo-tarpaulin and add tests.");
+  } else if (stack.language === "unknown") {
+    coverageCmd = null;
+    coverageRemediation = {
+      title: "Coverage not configured",
+      whyMatters: "Coverage ensures tests exercise the codebase adequately.",
+      impact: "No coverage measurement. Untested code paths may exist.",
+      suggestedFix: 'Configure coverage in .devflow/config.json deterministicGates.coverage.',
+      minimalExample: "Add a test:coverage script to package.json",
+      severity: "advisory",
+    };
+  } else {
+    coverageCmd = null;
+    coverageRemediation = {
+      title: `Coverage check skipped (${stack.language})`,
+      whyMatters: `Automated coverage tooling not detected for ${stack.language}.`,
+      impact: "No coverage measurement.",
+      suggestedFix: `Configure coverage for ${stack.language} in .devflow/config.json.`,
+      minimalExample: "Set deterministicGates.coverage to true and provide coverage command.",
+      severity: "advisory",
+    };
+  }
+
+  checks.push({
+    id: "8",
+    name: "Coverage ≥ 80%",
+    command: coverageCmd,
+    remediation: coverageRemediation,
+    blocking: coverageCmd !== null, // non-blocking if no coverage tool
+  });
+
+  return checks;
+}
+
 async function runAllDoDChecks(
   checks: DoDCheck[],
   rootPath: string,
@@ -116,7 +335,7 @@ async function runAllDoDChecks(
   await checkAcceptanceCriteria(checks, featureDir);
 
   // ── Check 20: Implementer ≠ approver ──
-  await checkImplementerSeparation(checks, featureDir);
+  await checkImplementerSeparation(checks, featureDir, rootPath);
 
   // ── Check 21: Adversarial review ──
   await checkAdversarialReview(checks, rootPath);
@@ -259,44 +478,23 @@ async function checkConstitution(checks: DoDCheck[], rootPath: string) {
 }
 
 async function checkDeterministicTools(checks: DoDCheck[], rootPath: string) {
-  const toolChecks: Array<{
-    id: string;
-    name: string;
-    command: string;
-    remediation: string;
-    blocking: boolean;
-  }> = [
-    {
-      id: "5",
-      name: "Testes passam",
-      command: "npx vitest run --reporter=verbose",
-      remediation: "Fix failing tests: npx vitest run",
-      blocking: true,
-    },
-    {
-      id: "6",
-      name: "Typecheck passa",
-      command: "npx tsc --noEmit",
-      remediation: "Fix type errors: npx tsc --noEmit",
-      blocking: true,
-    },
-    {
-      id: "7",
-      name: "Lint passa",
-      command: "npx eslint src/ --max-warnings 0 --config .devflow/eslintrc.constitution.json 2>&1 || true",
-      remediation: "Fix lint violations: npx eslint src/ --fix",
-      blocking: true,
-    },
-    {
-      id: "8",
-      name: "Coverage ≥ 80%",
-      command: "npx vitest run --coverage 2>&1 || true",
-      remediation: "Add tests to reach 80% coverage: npx vitest run --coverage",
-      blocking: true,
-    },
-  ];
+  const toolChecks = await buildStackToolChecks(rootPath);
 
   for (const tc of toolChecks) {
+    if (!tc.command) {
+      // Diagnostic mode — tool not configured
+      checks.push({
+        id: tc.id,
+        description: tc.name,
+        category: "deterministic",
+        passed: false,
+        evidence: `⚠️  Tool not configured for this stack. ${tc.remediation.suggestedFix}`,
+        blocking: tc.blocking,
+        remediation: tc.remediation.suggestedFix,
+      });
+      continue;
+    }
+
     try {
       const output = execSync(tc.command, {
         cwd: rootPath,
@@ -311,7 +509,7 @@ async function checkDeterministicTools(checks: DoDCheck[], rootPath: string) {
         passed: true,
         evidence: output.slice(-200).trim(),
         blocking: tc.blocking,
-        remediation: tc.remediation,
+        remediation: tc.remediation.suggestedFix,
       });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -320,18 +518,37 @@ async function checkDeterministicTools(checks: DoDCheck[], rootPath: string) {
         description: tc.name,
         category: "deterministic",
         passed: false,
-        evidence: `${tc.remediation}\n${errMsg.slice(0, 300)}`,
+        evidence: `${tc.remediation.title}: ${tc.remediation.suggestedFix}\n${errMsg.slice(0, 300)}`,
         blocking: tc.blocking,
-        remediation: tc.remediation,
+        remediation: tc.remediation.suggestedFix,
       });
     }
   }
 }
 
 async function checkCircularDeps(checks: DoDCheck[], rootPath: string) {
+  const stack = await detectStackProfile(rootPath);
+
+  // Circular dep detection only applies to TypeScript/JavaScript projects
+  if (stack.language !== "typescript" && stack.language !== "javascript") {
+    checks.push({
+      id: "9",
+      description: "Imports circulares zero",
+      category: "deterministic",
+      passed: true,
+      evidence: `Circular dep check skipped — not applicable to ${stack.language} projects`,
+      blocking: false,
+      remediation: `Circular dependency detection uses madge, which is for JS/TS only. Manual review recommended for ${stack.language}.`,
+    });
+    return;
+  }
+
+  const sourceDir = stack.sourceDir || "src";
+  const ext = stack.language === "typescript" ? "ts" : "js";
+
   try {
     const output = execSync(
-      "npx madge --circular --extensions ts src/ 2>&1 || true",
+      `npx madge --circular --extensions ${ext} ${sourceDir}/ 2>&1 || true`,
       { cwd: rootPath, encoding: "utf-8", timeout: 30000 }
     );
     const noCircular = output.includes("No circular") || output.trim() === "";
@@ -414,9 +631,44 @@ function checkGitBranch(checks: DoDCheck[], rootPath: string) {
 }
 
 async function checkTodos(checks: DoDCheck[], rootPath: string) {
+  const stack = await detectStackProfile(rootPath);
+  const sourceDir = stack.sourceDir || "src";
+
+  // Determine file extensions to scan based on language
+  let includePattern: string;
+  switch (stack.language) {
+    case "typescript":
+      includePattern = `--include="*.ts" --include="*.tsx"`;
+      break;
+    case "javascript":
+      includePattern = `--include="*.js" --include="*.jsx"`;
+      break;
+    case "python":
+      includePattern = `--include="*.py"`;
+      break;
+    case "go":
+      includePattern = `--include="*.go"`;
+      break;
+    case "rust":
+      includePattern = `--include="*.rs"`;
+      break;
+    case "php":
+      includePattern = `--include="*.php"`;
+      break;
+    case "java":
+      includePattern = `--include="*.java"`;
+      break;
+    case "ruby":
+      includePattern = `--include="*.rb"`;
+      break;
+    default:
+      includePattern = `--include="*.ts" --include="*.tsx" --include="*.js" --include="*.py" --include="*.go"`;
+      break;
+  }
+
   try {
     const output = execSync(
-      'grep -rn "TODO\\|FIXME" src/ --include="*.ts" | grep -v "TODO(" | grep -v "FIXME(" || true',
+      `grep -rn "TODO\\|FIXME" ${sourceDir}/ ${includePattern} | grep -v "TODO(" | grep -v "FIXME(" || true`,
       { cwd: rootPath, encoding: "utf-8", timeout: 10000 }
     );
     const clean = output.trim() === "";
@@ -425,7 +677,9 @@ async function checkTodos(checks: DoDCheck[], rootPath: string) {
       description: "Sem TODO/FIXME sem ticket",
       category: "deterministic",
       passed: clean,
-      evidence: clean ? "No unlinked TODO/FIXME" : `Unlinked TODOs:\n${output.slice(0, 300)}`,
+      evidence: clean
+        ? `No unlinked TODO/FIXME in ${sourceDir}/`
+        : `Unlinked TODOs:\n${output.slice(0, 300)}`,
       blocking: true,
       remediation: "Link all TODOs to issues: TODO(#123): description",
     });
@@ -638,8 +892,40 @@ async function checkAcceptanceCriteria(checks: DoDCheck[], featureDir: string) {
   }
 }
 
-async function checkImplementerSeparation(checks: DoDCheck[], featureDir: string) {
+async function checkImplementerSeparation(checks: DoDCheck[], featureDir: string, rootPath: string) {
+  // Check review mode from config
+  const { ConfigManager } = await import("../config/index.js");
+  const configMgr = new ConfigManager(rootPath);
+  const config = await configMgr.load();
+  const reviewMode = config.reviewMode || "independent";
+
   const logPath = path.join(featureDir, "implementation-log.jsonl");
+
+  // Solo-hardened: skip implementer separation, require compensating evidence
+  if (reviewMode === "solo-hardened") {
+    // Verify adversarial review passed as compensating evidence
+    const reviewPath = path.join(rootPath, ".devflow", "audits", "adversarial-review.md");
+    const hasAdvReview = await fileExists(reviewPath);
+    const advContent = hasAdvReview ? await safeReadFile(reviewPath) : null;
+    const advPassed = advContent?.includes("PASS") ?? false;
+
+    checks.push({
+      id: "19",
+      description: "Solo-Hardened: implementer separation waived, compensating evidence required",
+      category: "process",
+      passed: advPassed,
+      evidence: advPassed
+        ? "⚠️ Solo-hardened mode: implementer separation WAIVED. Compensating evidence: adversarial review PASS."
+        : "⚠️ Solo-hardened mode: adversarial review not yet passed — required as compensating evidence",
+      blocking: true,
+      remediation: advPassed
+        ? "Solo-hardened approval recorded. Independent human review did NOT occur."
+        : "Run `devflow adversarial-review <featureId>` to provide compensating evidence",
+    });
+    return;
+  }
+
+  // Independent mode: enforce strict separation
   if (await fileExists(logPath)) {
     try {
       const raw = await safeReadFile(logPath);
@@ -660,9 +946,9 @@ async function checkImplementerSeparation(checks: DoDCheck[], featureDir: string
         passed: actors.size > 1,
         evidence: actors.size > 1
           ? `${actors.size} distinct actors: ${[...actors].join(", ")}`
-          : "Only one actor — implementer and reviewer must differ",
+          : "Only one actor — implementer and reviewer must differ (or switch to solo-hardened review mode)",
         blocking: true,
-        remediation: "Have a different actor run `devflow gatekeep` for approval",
+        remediation: "Have a different actor run `devflow gatekeep` for approval, or run `devflow config set reviewMode solo-hardened` for solo projects",
       });
     } catch {
       checks.push({
