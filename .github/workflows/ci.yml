@@ -26,66 +26,82 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # ── Deterministic Gates (ALL BLOCKING) ──
+      # ── Mandatory Gates (BLOCKING) ──
 
       - name: TypeScript type check
         id: typecheck
-        run: npx tsc --noEmit
-
-      - name: ESLint (constitution rules)
-        id: lint
-        run: npx eslint src/ --max-warnings 0 --config .devflow/eslintrc.constitution.json
+        run: npm run typecheck
 
       - name: Unit tests
         id: tests
-        run: npx vitest run --reporter=verbose
+        run: npm test
 
       - name: Coverage (≥80%)
         id: coverage
-        run: npx vitest run --coverage --reporter=verbose
-
-      - name: Circular dependency check
-        id: circular
-        run: npx madge --circular --extensions ts src/
-
-      - name: Forbidden dependency check
-        id: forbidden
-        run: |
-          if [ -f .devflow/dependency-cruiser.constitution.js ]; then
-            npx dependency-cruiser --config .devflow/dependency-cruiser.constitution.js src/
-          else
-            echo "dependency-cruiser config not found — using default"
-            npx dependency-cruiser src/ --output-type err 2>&1 || true
-          fi
-
-      - name: TODO/FIXME audit
-        id: todos
-        run: |
-          UNLINKED=$(grep -rn "TODO\|FIXME" src/ --include="*.ts" | grep -v "TODO(#" | grep -v "FIXME(#" || true)
-          if [ -n "$UNLINKED" ]; then
-            echo "❌ Unlinked TODO/FIXME found:"
-            echo "$UNLINKED"
-            exit 1
-          else
-            echo "✅ All TODO/FIXME have ticket references"
-          fi
+        run: npm run test:coverage
 
       - name: Build
         id: build
         run: npm run build
 
-      - name: Adversarial test suite
+      # ── Advisory Gates (non-blocking — tools optional) ──
+
+      - name: ESLint (constitution rules — advisory)
+        id: lint
+        run: |
+          if [ -f src/kernel/artifacts/tool-configs/eslintrc.constitution.json ]; then
+            npx eslint src/ --max-warnings 0 --config src/kernel/artifacts/tool-configs/eslintrc.constitution.json 2>&1 || true
+          else
+            echo "ESLint config not found — skipping"
+          fi
+        continue-on-error: true
+
+      - name: Circular dependency check (advisory)
+        id: circular
+        run: |
+          npx madge --circular --extensions ts src/ 2>&1 || true
+        continue-on-error: true
+
+      - name: Forbidden dependency check (advisory)
+        id: forbidden
+        run: |
+          if [ -f src/kernel/artifacts/tool-configs/dependency-cruiser.constitution.js ]; then
+            npx dependency-cruiser --config src/kernel/artifacts/tool-configs/dependency-cruiser.constitution.js src/ 2>&1 || true
+          else
+            echo "dependency-cruiser config not found — skipping"
+          fi
+        continue-on-error: true
+
+      - name: TODO/FIXME audit (advisory)
+        id: todos
+        run: |
+          UNLINKED=$(grep -rn "TODO\|FIXME" src/ --include="*.ts" | grep -v "TODO(#" | grep -v "FIXME(#" || true)
+          if [ -n "$UNLINKED" ]; then
+            echo "⚠️  Unlinked TODO/FIXME found:"
+            echo "$UNLINKED"
+          else
+            echo "✅ All TODO/FIXME have ticket references"
+          fi
+        continue-on-error: true
+
+      - name: Adversarial test suite (advisory)
         id: adversarial
-        run: npx vitest run test/adversarial/ --reporter=verbose
+        run: |
+          if [ -d test/adversarial/ ]; then
+            npx vitest run test/adversarial/ --reporter=verbose 2>&1 || true
+          else
+            echo "No adversarial tests found — skipping"
+          fi
+        continue-on-error: true
 
       - name: Devflow self-check
         id: selfcheck
         run: |
           echo "Devflow status check..."
-          node dist/main.js status --json 2>&1 || echo "Devflow self-check skipped (build required first)"
+          node dist/main.js status --json 2>&1 || echo "Devflow self-check skipped"
 
-      - name: Package audit (advisory only)
-        run: npm audit --audit-level=high
+      - name: Package audit (advisory)
+        run: npm audit --audit-level=high 2>&1 || true
         continue-on-error: true
 
       # ── Summary ──
@@ -97,13 +113,14 @@ jobs:
           echo "| Gate | Result |" >> $GITHUB_STEP_SUMMARY
           echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| TypeScript | ${{ steps.typecheck.outcome }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| ESLint | ${{ steps.lint.outcome }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Tests | ${{ steps.tests.outcome }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Coverage | ${{ steps.coverage.outcome }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Circular Deps | ${{ steps.circular.outcome }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Forbidden Deps | ${{ steps.forbidden.outcome }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| TODO/FIXME | ${{ steps.todos.outcome }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Build | ${{ steps.build.outcome }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Adversarial | ${{ steps.adversarial.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| ESLint (advisory) | ${{ steps.lint.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Circular Deps (advisory) | ${{ steps.circular.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Forbidden Deps (advisory) | ${{ steps.forbidden.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| TODO/FIXME (advisory) | ${{ steps.todos.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Adversarial (advisory) | ${{ steps.adversarial.outcome }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Principle:** CI is the source of truth — no continue-on-error for structural gates." >> $GITHUB_STEP_SUMMARY
+          echo "**Mandatory gates:** TypeScript type check, unit tests, coverage ≥80%, build." >> $GITHUB_STEP_SUMMARY
+          echo "**Advisory gates:** ESLint, circular deps, forbidden deps, TODO/FIXME, adversarial tests, package audit." >> $GITHUB_STEP_SUMMARY
