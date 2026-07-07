@@ -133,7 +133,18 @@ devflow doctor
 - GitHub Copilot Code Review does not enforce engineering process. It does not check whether requirements exist, whether tests were planned before implementation, or whether the change was independently approved.
 - Devflow's evidence checks are deterministic and heuristic. They verify that artifacts exist, not that their content is high quality. A requirements file containing "TODO" passes the requirements check.
 - GitHub Copilot Code Review depends on cloud AI models that may produce inconsistent results across reviews and may not have context about your specific architecture or coding conventions. Results are non-deterministic.
+- GitHub Copilot Code Review requires a Copilot subscription and sends your diff to GitHub's cloud infrastructure. Teams with data residency requirements may need to evaluate this trade-off.
 - Neither tool replaces human judgment in code review. Architectural decisions, trade-off analysis, and nuanced business logic still require human expertise.
+
+## Why Not Use Only One?
+
+A common question: "If I have Copilot Code Review, do I still need Devflow?" The answer depends on what you want to verify:
+
+**Copilot Code Review alone** checks code quality on the PR. It tells you if the code has logic issues, style problems, or security vulnerabilities. It does not tell you if the change was planned, if requirements exist, if adversarial review was performed, or if the implementer and approver were different people. These are process questions that Copilot Code Review cannot answer because it only sees the final diff.
+
+**Devflow alone** checks governance evidence. It tells you if requirements, test plans, adversarial reviews, and gate approvals are present and complete. It does not tell you if the code has logic bugs or security issues. These are code questions that Devflow cannot answer because it does not parse source code.
+
+**Both together** cover both dimensions: process governance plus code quality. For teams that treat AI-generated code with the same rigor as human-written code, both are necessary.
 
 ## Next Steps
 

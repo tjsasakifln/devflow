@@ -12,6 +12,14 @@ Devflow answers these questions by wrapping Claude Code in a governance framewor
 
 The integration is bidirectional. Devflow's `--agent claude` option generates a hardened CLAUDE.md that includes explicit governance rules — telling Claude Code itself to respect the governance workflow. When Claude Code reads CLAUDE.md, it sees instructions like "Do not write code before `feature-coding-ready` state" and "Ensure requirements exist before implementation." This means Claude Code becomes a governed agent by default, not by afterthought.
 
+### How Claude Code Works
+
+Claude Code is Anthropic's official CLI agent for Claude. It connects to the Anthropic API, reads your codebase, and can perform autonomous actions: reading files, writing code, running shell commands, and managing git. It operates in a session-based terminal interface where you provide prompts and it responds with actions. Claude Code is AI-powered and context-aware, understanding your full project structure.
+
+### How Devflow Works
+
+Devflow is a deterministic governance CLI that runs independently of any AI agent. It reads governance artifacts, runs checks against them, and produces structured reports. Devflow does not use AI — every check is deterministic and reproducible. It enforces a 15-state feature progression pipeline, runs 25 Definition of Done checks, performs adversarial review against 12 attack vectors, and records gate approvals with full audit trails.
+
 ## Comparison
 
 | Dimension | Devflow | Claude Code |
@@ -34,6 +42,18 @@ The integration is bidirectional. Devflow's `--agent claude` option generates a 
 | **Setup time** | ~30 seconds | ~5 minutes (API key, install, authentication) |
 | **User interface** | CLI with structured output, reports, status checks | Terminal-based chat and command interface |
 | **Autonomy level** | Deterministic rule engine — no AI dependency | Autonomous AI agent — makes decisions, writes code, runs commands |
+| **Deterministic output** | Yes — same input always produces same result | No — AI model may produce different output per session |
+| **Works offline** | Yes — fully local, no network required | No — requires Anthropic API connection |
+
+## Common Misconceptions
+
+- **"Devflow is the same as Claude Code, just for governance."** Claude Code is an AI agent that writes code. Devflow is a deterministic CLI that audits engineering process. They are different categories of tool that work together.
+
+- **"Claude Code can govern itself."** Claude Code can read CLAUDE.md and follow instructions, but it cannot enforce rules it does not know about and cannot check its own output for evidence compliance. Devflow provides independent verification.
+
+- **"Devflow makes Claude Code slower."** Devflow runs in sub-second to seconds. The governance checks it performs (audit, feature-complete, adversarial-review, gatekeep) are fast. The time saved by catching governance gaps before CI more than compensates.
+
+- **"You should run Devflow after Claude Code is done."** Devflow should be integrated throughout the workflow: before Claude Code codes (verify requirements exist), during development (track state), and after (audit output). The `devflow feature prompt` command generates structured prompts that tell Claude Code exactly what to implement, making the whole process faster.
 
 ## How They Work Together: The Governed Development Loop
 
@@ -45,7 +65,7 @@ Devflow and Claude Code are designed as a pair. The integration creates a govern
 
 2. **Plan the Feature**: `devflow feature new my-feature` creates a feature workspace with directories for requirements, design, test plans, and logs. Devflow tracks state progression.
 
-3. **Define Requirements**: The developer (or Claude Code, in a governed session) fills in requirements. Devflow verifies they exist before allowing code.
+3. **Define Requirements**: The developer (or Claude Code, in a governed session) fills in requirements artifacts. Devflow verifies they exist before allowing code.
 
 4. **Generate Implementation Prompt**: `devflow feature prompt my-feature --save` produces a structured implementation prompt that includes governance constraints, requirements references, and test plan expectations. Claude Code reads this prompt to understand both the feature and the governance boundaries.
 
@@ -88,6 +108,28 @@ Devflow without Claude Code is a governance framework that requires manual imple
 
 The loop repeats for each feature: govern -> implement -> audit -> fix -> approve -> merge.
 
+## Real-World Scenario
+
+You ask Claude Code to "add a payment webhook handler." Claude Code reads your codebase, implements the handler with proper error handling and logging, and commits. The code looks good — clean, well-typed, following existing patterns.
+
+But the governance trail is empty:
+
+- No requirements document exists. Claude Code assumed Stripe webhook format, but your infrastructure uses a different provider. The requirements would have specified this.
+- No test plan was written. Claude Code wrote tests, but they cover only the server-side logic. End-to-end tests with the actual webhook provider are missing.
+- No adversarial review was performed. The handler accepts JSON input with no size validation. An adversarial review would flag this as a potential DoS vector.
+- No gate approval was recorded. The developer approved their own change.
+
+With Devflow:
+
+1. Before coding: `devflow feature prompt my-feature --save` generates a prompt that tells Claude Code "webhook provider is Braintree, not Stripe" and "input size validation is required."
+2. After coding: `devflow audit` checks that requirements and test plans exist.
+3. `devflow feature complete` runs 25 DoD checks.
+4. `devflow adversarial-review` flags the missing input size validation.
+5. `devflow gatekeep` requires an independent reviewer.
+6. `devflow review-pr` generates the risk report.
+
+Claude Code implements faster and produces better output because it had a structured prompt. Devflow catches the governance gaps that Claude Code cannot self-check.
+
 ## Quick Test
 
 ```bash
@@ -126,6 +168,7 @@ devflow doctor
 - Claude Code may produce code that passes all Devflow governance checks but still contains bugs, security vulnerabilities, or architectural issues. Devflow does not replace human code review.
 - Devflow cannot prevent a developer from bypassing the governance workflow entirely — skipping `devflow audit` and committing directly. CI-based Devflow gates catch this but run after the push.
 - Claude Code's API usage sends code context to Anthropic's servers. Devflow itself does not require any network access, but Claude Code does.
+- Neither tool replaces human judgment in architectural decisions, trade-off analysis, or nuanced business logic.
 
 ## Next Steps
 

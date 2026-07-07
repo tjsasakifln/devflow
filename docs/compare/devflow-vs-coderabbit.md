@@ -134,8 +134,19 @@ The key difference in practice: after running `devflow audit`, you know whether 
 - Devflow does not perform line-level code review. It does not catch logic bugs, edge cases, or security vulnerabilities in the diff itself.
 - CodeRabbit does not enforce engineering workflow. It does not check whether requirements exist or whether an adversarial review was performed.
 - Devflow's governance checks are heuristic and deterministic. They verify the presence of evidence, not the quality of that evidence. A requirements file that says "TODO" will pass Devflow's requirements check.
-- CodeRabbit's AI analysis can produce false positives or miss contextual issues that a human reviewer would catch. Results are non-deterministic.
+- CodeRabbit's AI analysis can produce false positives or miss contextual issues that a human reviewer would catch. Results are non-deterministic — the same diff may produce different comments on different reviews.
 - Neither tool replaces human judgment. Human code review is still necessary for nuanced architectural decisions and business logic validation.
+- CodeRabbit requires sending your code diff to a third-party cloud service, which may be a concern for organizations with strict data residency or confidentiality requirements.
+
+## Why Not Use Only One?
+
+Some teams might ask: "Can we just use CodeRabbit?" or "Can we just use Devflow?" Here is why using only one creates a blind spot:
+
+**CodeRabbit alone** catches code-level issues but misses process failures. You can have perfectly reviewed code that has no requirements, no test plan, no adversarial review, and no independent approval. The code looks good but the engineering process is broken.
+
+**Devflow alone** catches process failures but misses code-level issues. You can have full governance evidence for a change that contains a critical logic bug, a security vulnerability, or a style violation that makes review harder.
+
+**Both together** create full-spectrum quality assurance: process governance (Devflow) plus code review (CodeRabbit). Neither substitutes for the other.
 
 ## Next Steps
 

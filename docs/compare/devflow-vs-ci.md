@@ -19,6 +19,14 @@ Devflow fills that gap. It runs **before CI** — on the developer's machine, be
 
 CI tells you "the build is green." Devflow tells you "the change is governed." You need both. A CI pipeline that passes without governance evidence tells you nothing about whether the AI-generated code was properly planned, reviewed, and approved. A Devflow audit without CI tells you nothing about whether the code actually builds and passes tests.
 
+### How CI/CD Pipelines Work
+
+A typical CI pipeline is defined as a YAML configuration file (`.github/workflows/`, `Jenkinsfile`, `.gitlab-ci.yml`) that specifies triggers, jobs, and steps. When code is pushed, the CI runner checks out the repository, sets up the environment, and runs the specified commands: install dependencies, lint, type-check, test, build, and optionally deploy. Results are reported as status checks on the commit or PR. CI is triggered by pushes and runs on remote or self-hosted runners.
+
+### How Devflow Works
+
+Devflow runs locally on the developer's machine before any push. It reads governance artifacts from the project's `.devflow/` directory and feature workspaces in `_devflow/features/`. Commands like `devflow audit`, `devflow feature complete`, and `devflow gatekeep` provide governance feedback in under a second. Devflow can also run as a CI step for pre-merge governance re-verification, ensuring that governance checks are applied even if the developer skipped them locally.
+
 ## Comparison
 
 | Dimension | Devflow | CI/CD Pipeline |
@@ -41,6 +49,18 @@ CI tells you "the build is green." Devflow tells you "the change is governed." Y
 | **Granularity** | Feature-level governance (per feature workspace) | Commit-level and PR-level build quality |
 | **Failure mode localization** | Identifies which governance artifacts are missing and which workflow steps were skipped | Identifies which test failed or which build step broke |
 | **Recovery cost** | Low — catch governance gaps before push, fix locally | Medium — push, wait for CI, fix, push again |
+| **Cost per run** | Free (local execution, no runner minutes) | CI runner minutes (cloud or self-hosted) |
+| **Feedback speed** | Sub-second to seconds | Seconds to tens of minutes (queue + execution) |
+
+## Common Misconceptions
+
+- **"Devflow is a CI pipeline."** Devflow is a governance CLI that runs before CI. It checks evidence and engineering process, not build correctness. Devflow can integrate into CI, but its primary value is pre-push governance.
+
+- **"If CI is green, the change is ready to merge."** CI green means tests pass and the build compiles. It does not mean the change has requirements, test plans, adversarial review, or independent approval. CI green is necessary but not sufficient.
+
+- **"Devflow replaces CI checks."** Devflow does not run tests, check coverage, or build artifacts. You still need CI for functional verification. Devflow adds governance verification that CI does not provide.
+
+- **"CI can check governance too."** CI can run Devflow as a step, but by then the code has already been pushed. The primary value of Devflow is catching governance gaps before the push, saving CI runner time and catching issues earlier.
 
 ## When to Use Each
 
@@ -78,6 +98,24 @@ This layered approach catches:
 - **CI failures**: Test failures, build errors, coverage drops, security vulnerabilities — caught by CI after the push.
 - **Post-push governance failures**: CI governance check re-verifies evidence for the final diff, catching anything that changed between pre-push audit and actual push.
 
+## Real-World Scenario
+
+A developer uses an AI agent to generate a major refactor across 20 files. The CI pipeline takes 8 minutes to run: install, lint, type-check, test, build, coverage. The third push fails linting, the fifth push fails a test, the seventh push passes everything. The PR is merged.
+
+What CI did not catch:
+- No requirements document exists — the refactor changes API behavior with no spec.
+- No test plan was created — tests were written after the code and cover only what the code does, not what it should do.
+- No adversarial review was performed — the AI agent introduced a subtle architecture drift in three files.
+
+What CI consumed: 7 pushes x 8 minutes = 56 minutes of runner time, most of it wasted on governance gaps.
+
+With Devflow:
+- Pre-push `devflow audit` catches the missing requirements and test plan immediately.
+- Developer fixes these locally (2 minutes).
+- First push passes CI. Runner time: 8 minutes total.
+
+Devflow saves 48 minutes of CI runner time and catches governance gaps that CI never would.
+
 ## Quick Test
 
 ```bash
@@ -101,14 +139,13 @@ git push origin my-branch
 # See action.yml for configuration
 ```
 
-The key difference you will notice in practice: Devflow gives you feedback in under a second (local execution) before you push. CI gives you feedback in minutes (queue + execution) after you push. Devflow saves you from pushing code that will fail governance checks, and CI saves you from merging code that breaks tests.
-
 ## Limitations
 
 - Devflow does not run tests, build artifacts, or deploy code. It does not verify functional correctness.
 - CI/CD pipelines do not check for governance evidence. A passing CI build does not mean the change was planned, reviewed, or approved.
 - Devflow's pre-push governance is voluntary — a developer can skip Devflow and push directly. CI-based Devflow gates catch this but run after the push.
 - CI pipelines consume runner time and energy for every push, including pushes that fail governance checks. Devflow reduces this waste by catching failures pre-push.
+- Neither tool prevents malicious or deliberate bypass of governance if a developer is determined to circumvent the system.
 
 ## Next Steps
 

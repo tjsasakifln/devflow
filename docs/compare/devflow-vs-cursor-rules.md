@@ -14,6 +14,14 @@ Cursor Rules are also **Cursor-specific**. If your team uses Cursor and Claude C
 
 The core difference in a sentence: Cursor Rules try to **prevent** bad generation before it happens. Devflow **detects** what slips through after generation. You need both — rules to guide the AI, governance to catch when the AI strays.
 
+### How Cursor Rules Work
+
+Cursor Rules are markdown files placed in your project root (`.cursorrules`) or defined in Cursor's settings. When you ask Cursor to generate code in a file or via chat, the rules are injected into the AI's context as system instructions. They can reference project conventions, architectural decisions, library choices, and coding standards. Rules are written in natural language and interpreted by the AI model. There is no validation, no enforcement, and no reporting — the AI applies them as it sees fit.
+
+### How Devflow Works
+
+Devflow is a standalone CLI that runs independently of any editor or AI tool. After code is generated (by any tool), Devflow reads the project's governance artifacts and runs deterministic checks. It enforces a workflow with 15 states, verifies evidence completeness, performs adversarial review against 12 attack vectors, and records gate approvals with full audit trails. Devflow's output is structured, deterministic, and auditable.
+
 ## Comparison
 
 | Dimension | Devflow | Cursor Rules |
@@ -34,10 +42,22 @@ The core difference in a sentence: Cursor Rules try to **prevent** bad generatio
 | **Code leaves machine** | Never | Never |
 | **Requires specific editor** | No — standalone CLI, any editor | Yes — requires Cursor editor |
 | **Works with other AI tools** | Yes — Claude Code, Copilot, any AI agent | No — Cursor only |
-| **Setup time** | ~30 seconds (`npx @tjsasakinpm/devflow install`) | Minutes (writing and iterating .cursorrules) |
+| **Setup time** | ~30 seconds (`npx @tjsasakinpm/devflow install`) | Minutes (writing and iterating `.cursorrules`) |
 | **Pricing** | Free, open-source (MIT) | Included with Cursor editor subscription |
 | **Can block PRs** | Yes — governance gates in CI | No |
 | **Maintenance** | CLI updates via npm; configuration is version-controlled | Rules maintained in-project; no versioning or update mechanism |
+| **Output format** | Structured reports, JSON audit logs, approval records | No output — rules are input only |
+| **Deterministic** | Yes — same input always produces same governance result | No — AI model interpretation may vary |
+
+## Common Misconceptions
+
+- **"Cursor Rules are enough governance."** Cursor Rules guide code generation but provide no enforcement, no audit trail, and no verification after the fact. They cannot tell you whether requirements exist, whether adversarial review was performed, or whether an independent approval was recorded. Devflow provides these guarantees.
+
+- **"Devflow replaces Cursor Rules."** Devflow does not influence code generation at all. It audits the output after it is produced. Cursor Rules are still valuable for shaping Cursor's output toward your conventions and reducing the issues Devflow needs to flag.
+
+- **"If you have good Cursor Rules, you don't need Devflow."** Good rules reduce the likelihood of bad generation but cannot eliminate it. The AI may misinterpret rules, apply them inconsistently, or generate code that is syntactically correct but architecturally unsound. Devflow catches these failures.
+
+- **"Devflow works the same way as Cursor Rules."** Cursor Rules are input-side configuration (guide the AI before generation). Devflow is output-side verification (audit the result after generation). They operate at opposite ends of the code generation pipeline.
 
 ## When to Use Each
 
@@ -70,6 +90,23 @@ Cursor Rules and Devflow operate at different times and serve different function
 
 Cursor Rules reduce the noise Devflow needs to flag. Devflow provides the enforcement that Cursor Rules lack. Together they create a complete loop: guide at generation time, verify at governance time.
 
+## Real-World Scenario
+
+Your team uses Cursor with carefully written `.cursorrules` that specify:
+- "Use TypeScript strict mode"
+- "Never use `any`"
+- "All API endpoints must have input validation with Zod"
+- "Use the repository pattern for data access"
+
+Cursor generates a new API feature that follows all these rules. The code looks clean. However:
+
+- The rules said nothing about writing requirements first. There are none.
+- The rules said nothing about test plans. The AI wrote tests alongside the code, but they only cover happy paths.
+- The rules said nothing about adversarial review. The generated code uses an npm package that has a known supply-chain issue — no dependency validation was performed.
+- The rules said nothing about gate approval. The developer who ran Cursor also approved the PR.
+
+Cursor Rules produced well-styled code that follows the project's architectural patterns. But the governance artifacts — requirements, test plans, adversarial review, independent approval — are all missing. Devflow catches all four gaps.
+
 ## Quick Test
 
 ```bash
@@ -85,12 +122,13 @@ devflow review-pr --format markdown
 # Devflow full status
 devflow status --verbose
 
+# Devflow doctor — 16-point health check
+devflow doctor
+
 # Compare: view your Cursor Rules (if using Cursor)
 cat .cursorrules
 
 # Devflow works the same whether or not Cursor Rules exist
-# Run these anywhere:
-devflow doctor
 devflow audit --risk-tolerance strict
 ```
 
@@ -101,7 +139,8 @@ The practical difference: `.cursorrules` might instruct Cursor to "always use as
 - Devflow does not influence code generation. It cannot prevent bad code from being written — it can only detect and block it after the fact.
 - Cursor Rules do not provide enforcement. The AI can ignore them, apply them incorrectly, or produce code that violates rules without any alert.
 - Devflow's governance checks are heuristic — they verify artifact existence, not artifact quality. A cursor rule might produce better code, but Devflow will not measure that improvement.
-- Cursor Rules are scoped to one editor. If a developer uses Claude Code or Copilot, cursor rules have no effect.
+- Cursor Rules are scoped to one editor. If a developer uses Claude Code or Copilot, cursor rules have no effect. Devflow works across all tools.
+- Neither tool replaces human judgment in architectural decisions or code review.
 
 ## Next Steps
 
