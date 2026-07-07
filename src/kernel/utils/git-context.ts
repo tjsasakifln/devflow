@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import type { ExecutionMode } from "../types/artifacts.js";
+import { getVersion } from "./version.js";
 
 export interface GitContext {
   commitSha: string;
@@ -48,7 +49,7 @@ export function captureGitContext(
     commitSha,
     branch,
     gitStatus,
-    devflowVersion: "0.1.0",
+    devflowVersion: getVersion(),
     executionMode: mode,
   };
 }
