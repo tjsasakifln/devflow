@@ -10,7 +10,7 @@ const program = new Command();
 program
   .name("devflow")
   .description(
-    "fool-resistant, evidence-driven, engineered-by-default: state-aware workflow harness for AI-assisted software development"
+    "PR governance for AI-generated code — enforce evidence, run adversarial review, produce auditable PR risk reports"
   )
   .version(getVersion())
   .option("--cwd <path>", "Working directory", process.cwd())
@@ -58,7 +58,7 @@ function printTierList(): void {
       commands: [
         "init", "status", "next",
         "feature new", "feature complete", "feature prompt",
-        "gatekeep", "adversarial-review",
+        "gatekeep", "adversarial-review", "review-pr",
         "doctor", "update-cockpit", "index",
       ],
     },

@@ -1,7 +1,7 @@
 {
   "name": "@tjsasakinpm/devflow",
   "version": "0.2.1",
-  "description": "fool-resistant, evidence-driven, engineered-by-default: state-aware workflow harness for AI-assisted software development",
+  "description": "PR governance for AI-generated code — reduce risk, enforce evidence, produce auditable trails. Fool-resistant, not fool-proof.",
   "type": "module",
   "main": "./dist/main.js",
   "types": "./dist/main.d.ts",
@@ -29,18 +29,17 @@
   },
   "keywords": [
     "devflow",
-    "workflow",
-    "ai-assisted-development",
-    "brownfield",
-    "reverse-engineering",
-    "specification",
-    "orchestration",
-    "engineering-governance",
+    "ai-governance",
+    "pr-review",
+    "ai-generated-code",
+    "code-review-automation",
+    "evidence-trail",
     "definition-of-done",
     "adversarial-review",
+    "spec-driven-development",
     "claude-code",
     "cursor",
-    "spec-driven-development"
+    "engineering-governance"
   ],
   "license": "MIT",
   "repository": {

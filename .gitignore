@@ -22,3 +22,6 @@ CLAUDE.md
 .devflow/
 _devflow/
 DEVFLOW.md
+
+# Test coverage
+coverage/

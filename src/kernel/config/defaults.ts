@@ -37,7 +37,7 @@ export const DEFAULTS: DevflowConfig = {
     unusedDeps: false,
     ooMetrics: false,
     acceptanceCriteria: true,
-    adversarialReview: false,
+    adversarialReview: true,
   },
   ciIntegration: {
     enabled: false,
@@ -55,4 +55,5 @@ export const DEFAULTS: DevflowConfig = {
     requireDifferentActor: true,
   },
   reviewMode: "independent",
+  riskTolerance: "moderate",
 };

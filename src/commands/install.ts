@@ -163,39 +163,42 @@ export async function installCommand(
   await installGitHooks(cwd, options);
 
   // ── Onboarding ──
-  console.log(pc.green("\n✅ Devflow installed successfully!\n"));
-  console.log(pc.bold("What's next:\n"));
+  console.log(pc.green("\n✅ Devflow installed. AI code governance active.\n"));
 
-  const isBrownfield = stack.language !== "unknown";
-  if (isBrownfield) {
-    console.log(pc.bold("  Brownfield Project (existing code detected)"));
-    console.log(pc.dim("  1. Discover the codebase:"));
-    console.log(pc.cyan("     devflow discover"));
-    console.log(pc.dim("  2. Read the discovery reports in _devflow/discovery/"));
-    console.log(pc.dim("  3. Create your first feature:"));
-    console.log(pc.cyan("     devflow feature new \"your-feature-name\""));
-    console.log(pc.dim("  4. Follow the guidance:"));
-    console.log(pc.cyan("     devflow next"));
+  // Determine persona
+  const reviewMode = options.reviewMode ?? "independent";
+  const execMode = options.mode ?? "local";
+
+  if (reviewMode === "solo-hardened") {
+    console.log(pc.bold("🧑‍💻 Solo Builder Setup"));
+    console.log(pc.dim("  Working alone? Devflow becomes your second pair of eyes."));
+    console.log(pc.dim("  Self-approval OK. Adversarial review compensates for missing reviewer."));
+  } else if (execMode === "strict" || execMode === "release") {
+    console.log(pc.bold("🏢 Strict/Release Setup"));
+    console.log(pc.dim("  CI required. All gates blocking. Unknown actors blocked."));
+    console.log(pc.dim("  Full audit trail. Implementer ≠ approver enforced."));
   } else {
-    console.log(pc.bold("  Greenfield Project (new or minimal code)"));
-    console.log(pc.dim("  1. Create your first feature:"));
-    console.log(pc.cyan("     devflow feature new \"your-feature-name\""));
-    console.log(pc.dim("  2. Fill in the requirements interactively"));
-    console.log(pc.dim("  3. Follow the guidance:"));
-    console.log(pc.cyan("     devflow next"));
+    console.log(pc.bold("👥 Team Setup"));
+    console.log(pc.dim("  Implementer ≠ approver enforced (Constitution C12)."));
+    console.log(pc.dim("  Independent review required before merge."));
   }
 
   console.log();
-  console.log(pc.bold("  With AI Agent (Claude Code, Cursor, etc.)"));
-  console.log(pc.dim("  1. Tell your agent to read DEVFLOW.md first"));
-  console.log(pc.dim("  2. Agent must check 'Current Instruction for Agents' section"));
-  console.log(pc.dim("  3. Agent must NOT write code before feature-coding-ready state"));
-  console.log(pc.dim("  4. Use the implementation prompt when ready:"));
-  console.log(pc.cyan("     devflow feature prompt <id> --copy"));
-
+  console.log(pc.bold("Problem it solves:"));
+  console.log(pc.dim("  AI agents (Claude Code, Cursor, Copilot) ship code without"));
+  console.log(pc.dim("  requirements, tests, or review. Devflow enforces evidence before merge."));
   console.log();
-  console.log(pc.dim("For help: devflow --help"));
-  console.log(pc.dim("For health: devflow doctor\n"));
+  console.log(pc.bold("Next steps:"));
+  console.log(pc.cyan("  devflow feature new \"your-feature\""));
+  console.log(pc.dim("  → Creates workspace, asks what problem you're solving."));
+  console.log();
+  console.log(pc.cyan("  devflow next"));
+  console.log(pc.dim("  → Shows what to do after each step."));
+  console.log();
+  console.log(pc.cyan("  devflow review-pr"));
+  console.log(pc.dim("  → Generates a risk report you can paste in any PR."));
+  console.log();
+  console.log(pc.dim("For help: devflow --help | For health: devflow doctor\n"));
 }
 
 /**

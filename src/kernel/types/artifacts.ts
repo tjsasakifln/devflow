@@ -109,6 +109,8 @@ export interface DevflowConfig {
   };
   /** Review mode: independent requires different actor; solo-hardened allows self-approval with compensating evidence */
   reviewMode: "independent" | "solo-hardened";
+  /** Risk tolerance: relaxed (solo, advisory gates), moderate (default), strict (all blocking, CI required) */
+  riskTolerance: "relaxed" | "moderate" | "strict";
 }
 
 export interface LogEntry {

@@ -9,6 +9,7 @@ import { featureComplete } from "./feature-complete.js";
 import { featurePromptCommand } from "./feature-prompt.js";
 import { gatekeep } from "./gatekeep.js";
 import { adversarialReview } from "./adversarial-review.js";
+import { reviewPrCommand } from "./review-pr.js";
 import { doctorCommand } from "./doctor.js";
 import { updateCockpitCommand } from "./update-cockpit.js";
 import { indexProject } from "./index-project.js";
@@ -84,7 +85,7 @@ export function registerCommands(program: Command): void {
       const mgr = new ConfigManager(process.cwd());
       const config = await mgr.load();
 
-      const validKeys = ["reviewMode", "executionMode"];
+      const validKeys = ["reviewMode", "executionMode", "riskTolerance"];
       if (!validKeys.includes(key)) {
         console.log(pc.yellow(`Unknown config key: ${key}`));
         console.log(pc.dim(`Valid keys: ${validKeys.join(", ")}`));
@@ -103,6 +104,12 @@ export function registerCommands(program: Command): void {
         return;
       }
 
+      if (key === "riskTolerance" && !["relaxed", "moderate", "strict"].includes(value)) {
+        console.log(pc.yellow(`Invalid value for riskTolerance: ${value}`));
+        console.log(pc.dim("Valid values: relaxed, moderate, strict"));
+        return;
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (config as any)[key] = value;
       await mgr.save(config);
@@ -118,6 +125,26 @@ export function registerCommands(program: Command): void {
         console.log();
         console.log(pc.dim("   This is NOT equivalent to independent review."));
         console.log(pc.dim("   Consider seeking a second reviewer when possible."));
+      }
+
+      if (key === "riskTolerance") {
+        console.log();
+        if (value === "relaxed") {
+          console.log(pc.yellow("⚠️  Relaxed Risk Tolerance:"));
+          console.log(pc.yellow("   - Solo projects. Self-approval OK with compensating checks."));
+          console.log(pc.yellow("   - Coverage and lint → advisory (not blocking)."));
+          console.log(pc.yellow("   - Missing artifacts → warning, not block."));
+          console.log(pc.yellow("   - Adversarial review remains mandatory."));
+        } else if (value === "moderate") {
+          console.log(pc.green("✅ Moderate Risk Tolerance (default):"));
+          console.log(pc.dim("   - Standard gates. Team review expected. CI advisory."));
+        } else {
+          console.log(pc.red("🔒 Strict Risk Tolerance:"));
+          console.log(pc.red("   - All gates blocking. CI required. Unknown actors blocked."));
+          console.log(pc.red("   - Full audit trail mandatory."));
+        }
+        console.log();
+        console.log(pc.dim("   Risk tolerance adjusts gate severity. Run `devflow doctor` to see effects."));
       }
     });
 
@@ -191,6 +218,17 @@ export function registerCommands(program: Command): void {
       await adversarialReview(featureId, process.cwd());
     });
 
+  // review-pr
+  program
+    .command("review-pr")
+    .description("Generate PR risk report — what changed, which evidence exists, what risks remain")
+    .option("--base <branch>", "Base branch to compare against", "main")
+    .option("--output <file>", "Write report to file instead of stdout")
+    .option("--json", "Output as JSON")
+    .action(async (options) => {
+      await reviewPrCommand(process.cwd(), options);
+    });
+
   program
     .command("doctor")
     .description("Diagnose and fix common issues")
@@ -222,7 +260,7 @@ export function registerCommands(program: Command): void {
       renderPreviewStub(
         "devflow ai init",
         "AI provider configuration",
-        "Phase 3 of Devflow roadmap",
+        "Planned. Not built yet.",
         "Set environment variables manually: OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.",
       );
       console.log(pc.dim(`  Provider: ${options.provider ?? "ollama"} (not persisted)`));
@@ -250,7 +288,7 @@ export function registerCommands(program: Command): void {
         renderPreviewStub(
           "devflow discover --ai",
           "AI-assisted brownfield discovery",
-          "Phase 3 of Devflow roadmap",
+          "Planned. Not built yet.",
           "Use devflow discover (without --ai) for structural discovery — generates 4 reports.",
         );
       } else {
@@ -263,19 +301,13 @@ export function registerCommands(program: Command): void {
   program
     .command("requirements audit <featureId>")
     .description("[PREVIEW] Audit requirements completeness and quality")
-    .option("--ai", "Use AI-assisted audit")
-    .action(async (featureId: string, options) => {
-      if (options.ai) {
-        renderPreviewStub(
-          `devflow requirements audit ${featureId} --ai`,
-          "AI-assisted requirements audit",
-          "Phase 3 of Devflow roadmap",
-          "Manually review _devflow/features/<id>/requirements.md against the pedagogical template criteria.",
-        );
-      } else {
-        console.log(`Auditing requirements for ${featureId}...`);
-        console.log("Run with --ai for semantic analysis (when available).");
-      }
+    .action(async (featureId: string) => {
+      renderPreviewStub(
+        `devflow requirements audit ${featureId}`,
+        "Requirements completeness audit",
+        "Planned. Not built yet.",
+        `Review _devflow/features/${featureId}/requirements.md manually. Run devflow next --diagnose for weak sections.`,
+      );
     });
 
   // ── Design Review [PREVIEW] ──
@@ -283,19 +315,13 @@ export function registerCommands(program: Command): void {
   program
     .command("design review <featureId>")
     .description("[PREVIEW] Review architectural design")
-    .option("--ai", "Use AI-assisted review")
-    .action(async (featureId: string, options) => {
-      if (options.ai) {
-        renderPreviewStub(
-          `devflow design review ${featureId} --ai`,
-          "AI-assisted design review",
-          "Phase 3 of Devflow roadmap",
-          "Manually review _devflow/features/<id>/roadmap.md for architectural soundness.",
-        );
-      } else {
-        console.log(`Reviewing design for ${featureId}...`);
-        console.log("Run with --ai for semantic analysis (when available).");
-      }
+    .action(async (featureId: string) => {
+      renderPreviewStub(
+        `devflow design review ${featureId}`,
+        "Architectural design review",
+        "Planned. Not built yet.",
+        `Review _devflow/features/${featureId}/roadmap.md manually for architectural soundness.`,
+      );
     });
 
   // ── Tests Review [PREVIEW] ──
@@ -303,19 +329,13 @@ export function registerCommands(program: Command): void {
   program
     .command("tests review <featureId>")
     .description("[PREVIEW] Review test plan completeness")
-    .option("--ai", "Use AI-assisted review")
-    .action(async (featureId: string, options) => {
-      if (options.ai) {
-        renderPreviewStub(
-          `devflow tests review ${featureId} --ai`,
-          "AI-assisted test review",
-          "Phase 3 of Devflow roadmap",
-          "Manually review _devflow/features/<id>/test-plan.md for coverage gaps.",
-        );
-      } else {
-        console.log(`Reviewing tests for ${featureId}...`);
-        console.log("Run with --ai for semantic analysis (when available).");
-      }
+    .action(async (featureId: string) => {
+      renderPreviewStub(
+        `devflow tests review ${featureId}`,
+        "Test plan review",
+        "Planned. Not built yet.",
+        `Review _devflow/features/${featureId}/test-plan.md manually for coverage gaps.`,
+      );
     });
 
   // ── Actions Generate [PREVIEW] ──
@@ -323,18 +343,13 @@ export function registerCommands(program: Command): void {
   program
     .command("actions generate <featureId>")
     .description("[PREVIEW] Generate actions.md from design documents")
-    .option("--ai", "Use AI-assisted generation")
-    .action(async (featureId: string, options) => {
-      if (options.ai) {
-        renderPreviewStub(
-          `devflow actions generate ${featureId} --ai`,
-          "AI-assisted actions generation",
-          "Phase 3 of Devflow roadmap",
-          "Use the actions template: _devflow/features/<id>/actions.md",
-        );
-      } else {
-        console.log(pc.yellow("Use --ai flag to generate actions with AI assistance (when available)."));
-      }
+    .action(async (featureId: string) => {
+      renderPreviewStub(
+        `devflow actions generate ${featureId}`,
+        "Generate actions from design",
+        "Planned. Not built yet.",
+        `Use the actions template: copy templates/actions-template.md → _devflow/features/${featureId}/actions.md and fill in tasks.`,
+      );
     });
 
   // ── Drift Check [PREVIEW] ──
@@ -342,19 +357,13 @@ export function registerCommands(program: Command): void {
   program
     .command("drift check <featureId>")
     .description("[PREVIEW] Check code-spec divergence")
-    .option("--semantic", "Use semantic analysis for deeper drift detection")
-    .action(async (featureId: string, options) => {
-      if (options.semantic) {
-        renderPreviewStub(
-          `devflow drift check ${featureId} --semantic`,
-          "Semantic drift detection",
-          "Phase 3 of Devflow roadmap",
-          "Compare requirements.md acceptance criteria against implementation-log.jsonl manually.",
-        );
-      } else {
-        console.log(`Checking drift for feature: ${featureId}`);
-        console.log("Run with --semantic for AI-powered analysis (when available).");
-      }
+    .action(async (featureId: string) => {
+      renderPreviewStub(
+        `devflow drift check ${featureId}`,
+        "Code-spec drift detection",
+        "Planned. Not built yet.",
+        `Compare _devflow/features/${featureId}/requirements.md acceptance criteria against implementation-log.jsonl manually.`,
+      );
     });
 
   // ── AI Adversarial Review [PREVIEW] ──
@@ -366,7 +375,7 @@ export function registerCommands(program: Command): void {
       renderPreviewStub(
         `devflow adversarial-review-ai ${featureId}`,
         "AI-powered adversarial review (LangGraph pipeline)",
-        "Phase 3 of Devflow roadmap",
+        "Planned. Not built yet.",
         "Use 'devflow adversarial-review' for deterministic review (12 attack vectors, fully implemented).",
       );
     });
@@ -389,7 +398,7 @@ export function registerCommands(program: Command): void {
       renderPreviewStub(
         `devflow trace ${runId}`,
         "AI pipeline trace",
-        "Phase 3 of Devflow roadmap",
+        "Planned. Not built yet.",
         "Run artifacts will be stored in .devflow/ai/runs/ when available.",
       );
     });
@@ -403,7 +412,7 @@ export function registerCommands(program: Command): void {
       renderPreviewStub(
         `devflow promote ${proposalId}`,
         "AI proposal promotion",
-        "Phase 3 of Devflow roadmap",
+        "Planned. Not built yet.",
         "Manually copy artifacts from .devflow/ai/runs/ to _devflow/features/.",
       );
     });

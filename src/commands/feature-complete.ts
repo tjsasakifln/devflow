@@ -41,11 +41,20 @@ export async function featureComplete(
 ): Promise<void> {
   const featureDir = path.join(rootPath, "_devflow", "features", featureId);
 
+  // Load risk tolerance for gate adjustment
+  let riskTolerance: "relaxed" | "moderate" | "strict" = "moderate";
+  try {
+    const { ConfigManager } = await import("../config/index.js");
+    const cfgMgr = new ConfigManager(rootPath);
+    const cfg = await cfgMgr.load();
+    riskTolerance = cfg.riskTolerance ?? "moderate";
+  } catch { /* use default */ }
+
   console.log(pc.bold(`\nDevflow Feature Complete — ${featureId}\n`));
   console.log(`Verifying Definition of Done (25 checks)...\n`);
 
   const checks: DoDCheck[] = [];
-  await runAllDoDChecks(checks, rootPath, featureDir);
+  await runAllDoDChecks(checks, rootPath, featureDir, riskTolerance);
 
   renderDoDResults(checks, featureId);
 
@@ -62,8 +71,18 @@ export async function featureCompleteInternal(
   rootPath: string
 ): Promise<DoDResult> {
   const featureDir = path.join(rootPath, "_devflow", "features", featureId);
+
+  // Load risk tolerance
+  let riskTolerance: "relaxed" | "moderate" | "strict" = "moderate";
+  try {
+    const { ConfigManager } = await import("../config/index.js");
+    const cfgMgr = new ConfigManager(rootPath);
+    const cfg = await cfgMgr.load();
+    riskTolerance = cfg.riskTolerance ?? "moderate";
+  } catch { /* use default */ }
+
   const checks: DoDCheck[] = [];
-  await runAllDoDChecks(checks, rootPath, featureDir);
+  await runAllDoDChecks(checks, rootPath, featureDir, riskTolerance);
 
   const allBlockingPassed = checks.filter((c) => c.blocking && !c.passed).length === 0;
   const blockingFailed = checks
@@ -95,7 +114,7 @@ interface ToolCheckDef {
   blocking: boolean;
 }
 
-async function buildStackToolChecks(rootPath: string): Promise<ToolCheckDef[]> {
+async function buildStackToolChecks(rootPath: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate"): Promise<ToolCheckDef[]> {
   const stack = await detectStackProfile(rootPath);
   const checks: ToolCheckDef[] = [];
 
@@ -236,7 +255,7 @@ async function buildStackToolChecks(rootPath: string): Promise<ToolCheckDef[]> {
     name: "Lint passa",
     command: lintCmd,
     remediation: lintRemediation,
-    blocking: true,
+    blocking: riskTolerance !== "relaxed", // advisory in relaxed
   });
 
   // ── 4. Coverage check ──
@@ -287,7 +306,7 @@ async function buildStackToolChecks(rootPath: string): Promise<ToolCheckDef[]> {
     name: "Coverage ≥ 80%",
     command: coverageCmd,
     remediation: coverageRemediation,
-    blocking: coverageCmd !== null, // non-blocking if no coverage tool
+    blocking: riskTolerance !== "relaxed" ? coverageCmd !== null : false, // advisory in relaxed
   });
 
   return checks;
@@ -296,22 +315,23 @@ async function buildStackToolChecks(rootPath: string): Promise<ToolCheckDef[]> {
 async function runAllDoDChecks(
   checks: DoDCheck[],
   rootPath: string,
-  featureDir: string
+  featureDir: string,
+  riskTolerance: "relaxed" | "moderate" | "strict" = "moderate",
 ): Promise<void> {
   // ── Checks 1-4: Artifact completeness ──
-  await checkRequirements(checks, featureDir);
-  await checkRoadmap(checks, featureDir);
-  await checkActions(checks, featureDir);
+  await checkRequirements(checks, featureDir, riskTolerance);
+  await checkRoadmap(checks, featureDir, riskTolerance);
+  await checkActions(checks, featureDir, riskTolerance);
   await checkConstitution(checks, rootPath);
 
   // ── Checks 5-8: Deterministic tools ──
-  await checkDeterministicTools(checks, rootPath);
+  await checkDeterministicTools(checks, rootPath, riskTolerance);
 
   // ── Checks 9: Circular deps ──
   await checkCircularDeps(checks, rootPath);
 
   // ── Checks 10-12: Artifacts presence ──
-  await checkSupportArtifacts(checks, featureDir);
+  await checkSupportArtifacts(checks, featureDir, riskTolerance);
 
   // ── Check 13: Git branch ──
   checkGitBranch(checks, rootPath);
@@ -326,7 +346,7 @@ async function runAllDoDChecks(
   checkIndependentReview(checks, featureDir);
 
   // ── Check 17: CI verification ──
-  await checkCI(checks, rootPath, featureDir);
+  await checkCI(checks, rootPath, featureDir, riskTolerance);
 
   // ── Check 18: OO quality ──
   await checkOOQuality(checks, rootPath);
@@ -335,7 +355,7 @@ async function runAllDoDChecks(
   await checkAcceptanceCriteria(checks, featureDir);
 
   // ── Check 20: Implementer ≠ approver ──
-  await checkImplementerSeparation(checks, featureDir, rootPath);
+  await checkImplementerSeparation(checks, featureDir, rootPath, riskTolerance);
 
   // ── Check 21: Adversarial review ──
   await checkAdversarialReview(checks, rootPath, featureDir);
@@ -347,7 +367,7 @@ async function runAllDoDChecks(
   await checkSemanticQuality(checks, featureDir);
 
   // ── Check 24: Test plan ──
-  await checkTestPlan(checks, featureDir);
+  await checkTestPlan(checks, featureDir, riskTolerance);
 
   // ── Check 25: Implementation log ──
   await checkImplementationLog(checks, featureDir, rootPath);
@@ -355,9 +375,10 @@ async function runAllDoDChecks(
 
 // ── Individual check functions ──
 
-async function checkRequirements(checks: DoDCheck[], featureDir: string) {
+async function checkRequirements(checks: DoDCheck[], featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
   const reqPath = path.join(featureDir, "requirements.md");
   const hasReqs = await fileExists(reqPath);
+  const blocking = riskTolerance !== "relaxed"; // advisory in relaxed mode
   if (hasReqs) {
     const md = (await safeReadFile(reqPath)) || "";
     const v = validateRequirements(md);
@@ -369,7 +390,7 @@ async function checkRequirements(checks: DoDCheck[], featureDir: string) {
       evidence: v.valid
         ? "All required sections complete"
         : `Missing: ${[...v.missingSections, ...v.emptySections].join(", ")}`,
-      blocking: true,
+      blocking,
       remediation: "Fill all 15 required sections in requirements.md",
     });
   } else {
@@ -379,15 +400,16 @@ async function checkRequirements(checks: DoDCheck[], featureDir: string) {
       category: "artifact",
       passed: false,
       evidence: "requirements.md not found",
-      blocking: true,
+      blocking,
       remediation: "Create requirements.md with all 15 required sections",
     });
   }
 }
 
-async function checkRoadmap(checks: DoDCheck[], featureDir: string) {
+async function checkRoadmap(checks: DoDCheck[], featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
   const roadmapPath = path.join(featureDir, "roadmap.md");
   const hasRoadmap = await fileExists(roadmapPath);
+  const blocking = riskTolerance !== "relaxed";
   if (hasRoadmap) {
     const md = (await safeReadFile(roadmapPath)) || "";
     const v = validateRoadmap(md);
@@ -399,7 +421,7 @@ async function checkRoadmap(checks: DoDCheck[], featureDir: string) {
       evidence: v.valid
         ? "All required roadmap sections complete"
         : `Missing: ${[...v.missingSections, ...v.emptySections].join(", ")}`,
-      blocking: true,
+      blocking,
       remediation: "Fill all 13 required sections in roadmap.md",
     });
   } else {
@@ -409,15 +431,16 @@ async function checkRoadmap(checks: DoDCheck[], featureDir: string) {
       category: "artifact",
       passed: false,
       evidence: "roadmap.md not found",
-      blocking: true,
+      blocking,
       remediation: "Create roadmap.md with architecture, layers, patterns, interfaces",
     });
   }
 }
 
-async function checkActions(checks: DoDCheck[], featureDir: string) {
+async function checkActions(checks: DoDCheck[], featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
   const actionsPath = path.join(featureDir, "actions.md");
   const hasActions = await fileExists(actionsPath);
+  const blocking = riskTolerance !== "relaxed";
   if (hasActions) {
     const md = (await safeReadFile(actionsPath)) || "";
     const v = validateActions(md);
@@ -430,7 +453,7 @@ async function checkActions(checks: DoDCheck[], featureDir: string) {
       evidence: allDone
         ? "All actions completed with evidence"
         : "Actions not all completed",
-      blocking: true,
+      blocking,
       remediation: "Complete all unchecked actions and mark them [X] with evidence",
     });
   } else {
@@ -440,7 +463,7 @@ async function checkActions(checks: DoDCheck[], featureDir: string) {
       category: "artifact",
       passed: false,
       evidence: "actions.md not found",
-      blocking: true,
+      blocking,
       remediation: "Create actions.md with T001-format atomic tasks",
     });
   }
@@ -477,8 +500,8 @@ async function checkConstitution(checks: DoDCheck[], rootPath: string) {
   }
 }
 
-async function checkDeterministicTools(checks: DoDCheck[], rootPath: string) {
-  const toolChecks = await buildStackToolChecks(rootPath);
+async function checkDeterministicTools(checks: DoDCheck[], rootPath: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
+  const toolChecks = await buildStackToolChecks(rootPath, riskTolerance);
 
   for (const tc of toolChecks) {
     if (!tc.command) {
@@ -574,7 +597,8 @@ async function checkCircularDeps(checks: DoDCheck[], rootPath: string) {
   }
 }
 
-async function checkSupportArtifacts(checks: DoDCheck[], featureDir: string) {
+async function checkSupportArtifacts(checks: DoDCheck[], featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
+  const blocking = riskTolerance === "strict"; // only blocking in strict mode
   checks.push({
     id: "10",
     description: "Legacy impact analisado",
@@ -583,7 +607,7 @@ async function checkSupportArtifacts(checks: DoDCheck[], featureDir: string) {
     evidence: (await fileExists(path.join(featureDir, "legacy-impact.md")))
       ? "legacy-impact.md found"
       : "legacy-impact.md missing",
-    blocking: true,
+    blocking,
     remediation: "Create legacy-impact.md documenting affected modules",
   });
 
@@ -595,7 +619,7 @@ async function checkSupportArtifacts(checks: DoDCheck[], featureDir: string) {
     evidence: (await fileExists(path.join(featureDir, "regression-watch.md")))
       ? "regression-watch.md found"
       : "regression-watch.md missing",
-    blocking: true,
+    blocking,
     remediation: "Create regression-watch.md with areas to monitor",
   });
 }
@@ -744,7 +768,20 @@ function checkIndependentReview(checks: DoDCheck[], _featureDir: string) {
   });
 }
 
-async function checkCI(checks: DoDCheck[], rootPath: string, _featureDir: string) {
+async function checkCI(checks: DoDCheck[], rootPath: string, _featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
+  // In relaxed mode, CI is not checked at all
+  if (riskTolerance === "relaxed") {
+    checks.push({
+      id: "16",
+      description: "CI verification (skipped in relaxed mode)",
+      category: "ci",
+      passed: true,
+      evidence: "CI check skipped — riskTolerance is relaxed",
+      blocking: false,
+      remediation: "Enable CI in config and set riskTolerance to moderate or strict to enforce CI checks",
+    });
+    return;
+  }
   try {
     const { verifyCIStatus } = await import("../engine/ci-verifier.js");
     const { ConfigManager } = await import("../config/index.js");
@@ -771,15 +808,17 @@ async function checkCI(checks: DoDCheck[], rootPath: string, _featureDir: string
       });
     } else {
       const mode = config.executionMode || "local";
-      const ciRequired = mode === "strict" || mode === "release";
+      const ciRequired = mode === "strict" || mode === "release" || riskTolerance === "strict";
       checks.push({
         id: "16",
         description: "CI verification",
         category: "ci",
         passed: !ciRequired,
         evidence: ciRequired
-          ? "⛔ CI integration not enabled — required in " + mode + " mode"
-          : "CI integration not enabled in config",
+          ? "⛔ CI integration not enabled — required in " + mode + " mode / " + riskTolerance + " tolerance"
+          : riskTolerance === "moderate"
+            ? "⚠️ CI not enabled — advisory in moderate tolerance"
+            : "CI integration not enabled in config",
         blocking: ciRequired,
         remediation: "Enable CI: set ciIntegration.enabled=true in .devflow/config.json",
       });
@@ -892,7 +931,7 @@ async function checkAcceptanceCriteria(checks: DoDCheck[], featureDir: string) {
   }
 }
 
-async function checkImplementerSeparation(checks: DoDCheck[], featureDir: string, rootPath: string) {
+async function checkImplementerSeparation(checks: DoDCheck[], featureDir: string, rootPath: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
   // Check review mode from config
   const { ConfigManager } = await import("../config/index.js");
   const configMgr = new ConfigManager(rootPath);
@@ -926,7 +965,7 @@ async function checkImplementerSeparation(checks: DoDCheck[], featureDir: string
     return;
   }
 
-  // Independent mode: enforce strict separation
+  // Independent mode: enforce strict separation (advisory in relaxed risk tolerance)
   if (await fileExists(logPath)) {
     try {
       const raw = await safeReadFile(logPath);
@@ -940,6 +979,7 @@ async function checkImplementerSeparation(checks: DoDCheck[], featureDir: string
           } catch { /* skip */ }
         }
       }
+      const sepBlocking = riskTolerance !== "relaxed";
       checks.push({
         id: "19",
         description: "Implementer ≠ Approver (atores diferentes)",
@@ -948,7 +988,7 @@ async function checkImplementerSeparation(checks: DoDCheck[], featureDir: string
         evidence: actors.size > 1
           ? `${actors.size} distinct actors: ${[...actors].join(", ")}`
           : "Only one actor — implementer and reviewer must differ (or switch to solo-hardened review mode)",
-        blocking: true,
+        blocking: sepBlocking,
         remediation: "Have a different actor run `devflow gatekeep` for approval, or run `devflow config set reviewMode solo-hardened` for solo projects",
       });
     } catch {
@@ -963,13 +1003,14 @@ async function checkImplementerSeparation(checks: DoDCheck[], featureDir: string
       });
     }
   } else {
+    const sepBlocking = riskTolerance !== "relaxed";
     checks.push({
       id: "19",
       description: "Implementer ≠ Approver (atores diferentes)",
       category: "process",
       passed: false,
       evidence: "implementation-log.jsonl missing — no actor tracking",
-      blocking: true,
+      blocking: sepBlocking,
       remediation: "Record actor in implementation-log.jsonl entries",
     });
   }
@@ -1083,8 +1124,9 @@ async function checkSemanticQuality(checks: DoDCheck[], featureDir: string) {
   }
 }
 
-async function checkTestPlan(checks: DoDCheck[], featureDir: string) {
+async function checkTestPlan(checks: DoDCheck[], featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
   const tpPath = path.join(featureDir, "test-plan.md");
+  const blocking = riskTolerance !== "relaxed";
   checks.push({
     id: "23",
     description: "Test plan completo com edge cases e error scenarios",
@@ -1093,7 +1135,7 @@ async function checkTestPlan(checks: DoDCheck[], featureDir: string) {
     evidence: (await fileExists(tpPath))
       ? "test-plan.md found"
       : "test-plan.md missing",
-    blocking: true,
+    blocking,
     remediation: "Create test-plan.md with test strategy, unit tests, integration tests, edge cases, and error scenarios",
   });
 }

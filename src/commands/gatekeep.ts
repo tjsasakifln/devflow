@@ -57,6 +57,7 @@ export async function gatekeep(
   const config = await configMgr.load();
   const mode = config.executionMode || "local";
   const reviewMode = config.reviewMode || "independent";
+  const riskTolerance = config.riskTolerance || "moderate";
 
   // ── Validate implementation log structure (strict/release) ──
   if ((mode === "strict" || mode === "release") && logExists) {
@@ -138,15 +139,23 @@ export async function gatekeep(
   // ── Enforce implementer ≠ approver ──
   if (reviewMode === "independent") {
     if (gatekeeper === implementerActor && implementerActor !== "unknown") {
-      console.log(pc.red("⛔ Gatekeep Refused — Implementer Cannot Approve\n"));
-      console.log(pc.red(`   Implementer: ${implementerActor}`));
-      console.log(pc.red(`   Gatekeeper:  ${gatekeeper}`));
-      console.log(pc.red("   Same actor cannot implement AND approve. Use a different agent/person.\n"));
-      console.log(pc.yellow("   Rule: Constitution C12 — Segregação de Papéis"));
-      console.log(pc.yellow("   Set DEVFLOW_ACTOR env var or use --actor flag to identify the gatekeeper.\n"));
-      console.log(pc.dim("   Tip: To allow self-approval with compensating evidence, run:"));
-      console.log(pc.dim("        devflow config set reviewMode solo-hardened\n"));
-      return;
+      if (riskTolerance === "relaxed") {
+        console.log(pc.yellow("⚠️  Same actor implementing and approving — allowed in relaxed tolerance.\n"));
+        console.log(pc.yellow(`   Implementer: ${implementerActor}`));
+        console.log(pc.yellow(`   Gatekeeper:  ${gatekeeper}`));
+        console.log(pc.yellow("   Risk: No independent review. Report will flag this as residual risk.\n"));
+      } else {
+        console.log(pc.red("⛔ Gatekeep Refused — Implementer Cannot Approve\n"));
+        console.log(pc.red(`   Implementer: ${implementerActor}`));
+        console.log(pc.red(`   Gatekeeper:  ${gatekeeper}`));
+        console.log(pc.red("   Same actor cannot implement AND approve. Use a different agent/person.\n"));
+        console.log(pc.yellow("   Rule: Constitution C12 — Segregação de Papéis"));
+        console.log(pc.yellow("   Set DEVFLOW_ACTOR env var or use --actor flag to identify the gatekeeper.\n"));
+        console.log(pc.dim("   Tip: To allow self-approval, run: devflow config set riskTolerance relaxed"));
+        console.log(pc.dim("        Or for solo-hardened with compensating evidence:"));
+        console.log(pc.dim("        devflow config set reviewMode solo-hardened\n"));
+        return;
+      }
     }
   }
 

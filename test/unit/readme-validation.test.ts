@@ -45,23 +45,23 @@ describe("README.md Validation", () => {
 
     for (const cmd of nonExistentCommands) {
       // They might appear in "what we don't do" sections but not as functional commands
-      const stableSection = readmeContent.split("### PREVIEW")[0];
+      const stableSection = readmeContent.split("## Roadmap")[0];
       if (stableSection) {
         expect(stableSection).not.toContain(cmd);
       }
     }
   });
 
-  it("should include three first-use paths", () => {
-    expect(readmeContent).toContain("Greenfield");
-    expect(readmeContent).toContain("Brownfield");
-    expect(readmeContent).toContain("AI Agent");
+  it("should include three setup paths", () => {
+    expect(readmeContent).toContain("Solo Builder");
+    expect(readmeContent).toContain("Team");
+    expect(readmeContent).toContain("Strict");
   });
 
   it("should include tier classification for commands", () => {
     expect(readmeContent).toContain("STABLE");
     expect(readmeContent).toContain("EXPERIMENTAL");
-    expect(readmeContent).toContain("PREVIEW");
+    expect(readmeContent).toContain("Roadmap");
   });
 
   it("should document install command or installation method", () => {
@@ -78,7 +78,7 @@ describe("README.md Validation", () => {
 
   it("should not claim unimplemented features as working", () => {
     // PREVIEW commands should be labeled as PREVIEW
-    const previewSection = readmeContent.split("### PREVIEW")[1];
+    const previewSection = readmeContent.split("## Roadmap")[1];
     if (previewSection) {
       // PREVIEW section exists - good
       expect(previewSection.length).toBeGreaterThan(50);
