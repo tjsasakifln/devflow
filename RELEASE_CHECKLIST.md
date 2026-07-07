@@ -1,52 +1,51 @@
-# Release Checklist -- v0.4.0
+# Release Checklist — v0.4.1
 
-## Pre-release
+## Pre-release Validation (BLOCKING — must pass before publish)
 
-- [ ] All tests pass: `npm test`
-- [ ] TypeScript compiles: `npm run typecheck`
-- [ ] Build succeeds: `npm run build`
-- [ ] No stale version references: `grep -r "0.3.0" src/` returns nothing
-- [ ] README commands match actual CLI: `node dist/main.js --help`
-- [ ] All STABLE commands have test coverage
-- [ ] All EXPERIMENTAL commands declare limitations
-- [ ] All PREVIEW commands hidden behind `--all` flag
-- [ ] CHANGELOG.md updated for this version
-- [ ] Version bumped in package.json
-- [ ] Git hooks tested: pre-commit, pre-push
+- [ ] `npm ci` — clean install
+- [ ] `npm run typecheck` — zero errors
+- [ ] `npm test` — all tests pass (158+ tests)
+- [ ] `npm run test:coverage` — coverage >= 80%
+- [ ] `npm run build` — build succeeds
+- [ ] `node dist/main.js --version` — returns 0.4.1
+- [ ] `node dist/main.js --help` — audit listed as stable, no preview noise
+- [ ] `node dist/main.js --list-tiers` — audit and config in STABLE
+- [ ] `node dist/main.js audit --format markdown` — produces valid report
+- [ ] `node dist/main.js audit --format html --output /tmp/test.html` — writes HTML file
+- [ ] `node dist/main.js audit --format json 2>/dev/null | node -e "JSON.parse(require('fs').readFileSync(0,'utf8'))"` — valid JSON, no banner pollution
+- [ ] `node dist/main.js review-pr --format markdown` — produces valid report
+- [ ] `node dist/main.js review-pr --risk-tolerance strict --format json 2>/dev/null | node -e "JSON.parse(require('fs').readFileSync(0,'utf8'))"` — accepts flag, valid JSON
+- [ ] `grep "no code ever leaves your machine" README.md` — returns nothing (privacy language fixed)
+- [ ] `grep "CI runner" README.md` — returns corrected text
 
 ## CI / Build
 
 - [ ] CI passes on `main` branch
 - [ ] `npm pack` succeeds and produces a valid tarball
-- [ ] Package installs correctly: `npm install -g ./devflow-0.4.0.tgz`
-- [ ] `devflow --version` returns 0.4.0
-- [ ] `devflow --help` lists all STABLE commands
+- [ ] Package installs correctly: `npm install -g ./devflow-0.4.1.tgz`
+- [ ] `devflow --version` returns 0.4.1
 
 ## Documentation
 
-- [ ] README.md reflects all STABLE commands and their flags
-- [ ] action.yml input/output documentation is accurate
-- [ ] CLAUDE.md is current (AI agent instructions)
-- [ ] ARCHITECTURE.md is current
-- [ ] CONTRIBUTING.md setup instructions are accurate
-- [ ] CHANGELOG.md entry is complete and accurate
+- [ ] README.md privacy language is precise (no absolute claims)
+- [ ] action.yml uses `--risk-tolerance` correctly (flag exists on review-pr)
+- [ ] action.yml fail-on logic uses JSON extraction (not grep)
+- [ ] CLAUDE.md is current
+- [ ] CHANGELOG.md updated for v0.4.1
 
 ## Smoke Tests
 
-- [ ] `devflow audit` runs on this repository (no feature setup)
-- [ ] `devflow audit --format html --output report.html` generates valid HTML
-- [ ] `devflow audit --format json` produces valid JSON
-- [ ] `devflow review-pr --format markdown --output report.md` succeeds
+- [ ] `devflow audit` catches eval() in modified file
+- [ ] `devflow audit --staged` audits only staged changes
+- [ ] `devflow audit --working-tree` audits only unstaged changes
 - [ ] `devflow review-pr --format html` generates standalone report
-- [ ] `devflow review-pr --json` produces machine-readable output
-- [ ] `devflow init --yes` scaffolds a new project correctly
-- [ ] `devflow status` reports correct state
-- [ ] `devflow feature new test-feature --non-interactive` creates workspace
-- [ ] `devflow feature complete test-feature` runs 25 checks
+- [ ] `devflow review-pr --format json` produces machine-readable output
+- [ ] `devflow review-pr --risk-tolerance strict` applies tolerance
+- [ ] Stack adapters: changed TS files detected and adapter active
+- [ ] Excluded files (dist/, node_modules/) not in changedFiles
 
 ## Post-release
 
-- [ ] Tag created: `git tag v0.4.0 && git push origin v0.4.0`
-- [ ] npm publish: `npm publish --access public`
+- [ ] Tag created: `git tag v0.4.1 && git push origin v0.4.1`
+- [ ] npm publish: `npm publish`
 - [ ] GitHub release created with changelog notes
-- [ ] Release announcement in discussions

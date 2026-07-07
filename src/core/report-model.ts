@@ -116,4 +116,8 @@ export interface AuditReport {
   featureId: string | null;
   /** Compact PR snippet for pasting into PR description */
   prSnippet: string;
+  /** Human-readable description of what scope was audited */
+  scopeDescription: string;
+  /** Stack-specific risk hints from adapters */
+  stackHints?: string[];
 }

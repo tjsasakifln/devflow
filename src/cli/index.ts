@@ -250,6 +250,7 @@ export function registerCommands(program: Command): void {
     .option("--output <file>", "Write report to file instead of stdout")
     .option("--json", "Output as JSON (shorthand for --format json)")
     .option("--format <format>", "Output format: markdown, html, json", "markdown")
+    .option("--risk-tolerance <level>", "Risk tolerance: relaxed, moderate, strict")
     .action(async (options) => {
       await reviewPrCommand(process.cwd(), options);
     });

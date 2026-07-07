@@ -1,6 +1,6 @@
 # Devflow — Local AI Coding Governance
 
-> Engineer AI-generated code with auditable evidence, pre-PR risk reports, and engineering guardrails that work locally. No cloud, no API keys, no blind trust.
+> Engineer AI-generated code with auditable evidence, pre-PR risk reports, and engineering guardrails. Runs locally. No LLM API keys required. No third-party review SaaS.
 
 [![npm version](https://img.shields.io/npm/v/@tjsasakinpm/devflow)](https://www.npmjs.com/package/@tjsasakinpm/devflow)
 [![npm install](https://img.shields.io/badge/npx_install-@tjsasakinpm/devflow-blue)](https://www.npmjs.com/package/@tjsasakinpm/devflow)
@@ -56,7 +56,9 @@
 - Does **not** replace human code review
 - Does **not** prevent deliberate process bypass
 - Does **not** write code for you — it prepares the ground so AI-generated code has evidence
-- Does **not** require API keys or SaaS accounts — **runs fully local; no code ever leaves your machine**
+- Does **not** require LLM API keys or third-party review SaaS accounts — **runs fully local by default; when used in GitHub Actions, code is processed inside the CI runner. Devflow has no SaaS backend, no telemetry, and never sends code to LLM providers or third-party review services.**
+
+> **Privacy:** Devflow has no SaaS backend, collects no telemetry, and never sends your code to external services. CI artifact upload is optional and controlled by your workflow configuration. See [docs/local-first.md](docs/local-first.md) for details.
 
 ---
 

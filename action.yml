@@ -59,79 +59,78 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: |
-        # Build format flag
-        FORMAT_FLAG=""
-        if [ "${{ inputs.format }}" = "json" ]; then
-          FORMAT_FLAG="--json"
-        elif [ "${{ inputs.format }}" = "html" ]; then
-          FORMAT_FLAG="--format html"
-        fi
-
-        # Run audit
+        # Generate JSON report for reliable CI decision
         devflow review-pr \
-          --base "${{ inputs.base-branch }}" \
-          --output "${{ inputs.output-file }}" \
-          $FORMAT_FLAG \
+          --base "origin/${{ inputs.base-branch }}" \
+          --format json \
+          --output /tmp/devflow-ci.json \
           --risk-tolerance "${{ inputs.risk-tolerance }}" \
-          2>&1 || AUDIT_EXIT=$?
+          2>&1 || true
 
-        # Extract verdict from report (JSON path)
-        VERDICT="UNKNOWN"
-        if [ -f "${{ inputs.output-file }}" ]; then
-          if [ "${{ inputs.format }}" = "json" ]; then
-            VERDICT=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('${{ inputs.output-file }}','utf8')).verdict)}catch(e){console.log('UNKNOWN')}")
-          elif [ "${{ inputs.format }}" = "markdown" ]; then
-            VERDICT=$(grep -oP 'Verdict:\s*\K(PASS|WARN|FAIL|BLOCKED)' "${{ inputs.output-file }}" | head -1 || echo "UNKNOWN")
-            # Also write to GITHUB_STEP_SUMMARY
-            cat "${{ inputs.output-file }}" >> $GITHUB_STEP_SUMMARY
-          else
-            VERDICT="SEE_REPORT"
-          fi
+        # Extract severity counts reliably from JSON
+        if [ -f /tmp/devflow-ci.json ]; then
+          VERDICT=$(node -e "try{console.log(require('/tmp/devflow-ci.json').verdict||'UNKNOWN')}catch(e){console.log('UNKNOWN')}")
+          CRITICAL=$(node -e "try{console.log(require('/tmp/devflow-ci.json').severityMatrix?.critical||0)}catch(e){console.log('0')}")
+          HIGH=$(node -e "try{console.log(require('/tmp/devflow-ci.json').severityMatrix?.high||0)}catch(e){console.log('0')}")
+          MEDIUM=$(node -e "try{console.log(require('/tmp/devflow-ci.json').severityMatrix?.medium||0)}catch(e){console.log('0')}")
+          LOW=$(node -e "try{console.log(require('/tmp/devflow-ci.json').severityMatrix?.low||0)}catch(e){console.log('0')}")
+        else
+          VERDICT="ERROR"
+          CRITICAL=0; HIGH=0; MEDIUM=0; LOW=0
         fi
 
+        # Set outputs
         echo "verdict=$VERDICT" >> $GITHUB_OUTPUT
-        echo "report-path=${{ inputs.output-file }}" >> $GITHUB_OUTPUT
-
-        # Extract severity counts
-        CRITICAL=$(grep -c "CRITICAL" "${{ inputs.output-file }}" 2>/dev/null || echo "0")
-        HIGH=$(grep -c "HIGH" "${{ inputs.output-file }}" 2>/dev/null || echo "0")
+        echo "report-path=/tmp/devflow-ci.json" >> $GITHUB_OUTPUT
         echo "critical-count=$CRITICAL" >> $GITHUB_OUTPUT
         echo "high-count=$HIGH" >> $GITHUB_OUTPUT
+        echo "medium-count=$MEDIUM" >> $GITHUB_OUTPUT
+        echo "low-count=$LOW" >> $GITHUB_OUTPUT
 
-        # Fail pipeline based on fail-on threshold
-        FAIL_SEVERITY="${{ inputs.fail-on }}"
-        if [ "$FAIL_SEVERITY" = "CRITICAL" ] && [ "$CRITICAL" -gt 0 ]; then
-          echo "❌ Blocking: CRITICAL findings detected"
-          exit 1
-        elif [ "$FAIL_SEVERITY" = "HIGH" ] && ([ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]); then
-          echo "❌ Blocking: HIGH or above findings detected"
-          exit 1
-        elif [ "$FAIL_SEVERITY" = "MEDIUM" ] && [ $((CRITICAL + HIGH)) -gt 0 ]; then
-          echo "❌ Blocking: MEDIUM or above findings detected"
-          exit 1
+        # Also generate human-readable markdown report
+        devflow review-pr \
+          --base "origin/${{ inputs.base-branch }}" \
+          --format markdown \
+          --output "${{ inputs.output-file }}" \
+          --risk-tolerance "${{ inputs.risk-tolerance }}" \
+          2>&1 || true
+
+        # Post markdown to step summary
+        if [ -f "${{ inputs.output-file }}" ]; then
+          cat "${{ inputs.output-file }}" >> $GITHUB_STEP_SUMMARY
         fi
 
-        # Always exit 0 for display (report is the artifact)
-        exit 0
+        # Fail pipeline based on fail-on threshold (reliable JSON-based)
+        FAIL_SEVERITY="${{ inputs.fail-on }}"
+        if [ "$FAIL_SEVERITY" = "never" ]; then
+          echo "✅ fail-on=never — pipeline always passes"
+          exit 0
+        elif [ "$FAIL_SEVERITY" = "LOW" ] && [ $((CRITICAL + HIGH + MEDIUM + LOW)) -gt 0 ]; then
+          echo "❌ Blocking: LOW or above findings detected"
+          exit 1
+        elif [ "$FAIL_SEVERITY" = "MEDIUM" ] && [ $((CRITICAL + HIGH + MEDIUM)) -gt 0 ]; then
+          echo "❌ Blocking: MEDIUM or above findings detected (C:$CRITICAL H:$HIGH M:$MEDIUM)"
+          exit 1
+        elif [ "$FAIL_SEVERITY" = "HIGH" ] && [ $((CRITICAL + HIGH)) -gt 0 ]; then
+          echo "❌ Blocking: HIGH or above findings detected (C:$CRITICAL H:$HIGH)"
+          exit 1
+        elif [ "$FAIL_SEVERITY" = "CRITICAL" ] && [ "$CRITICAL" -gt 0 ]; then
+          echo "❌ Blocking: CRITICAL findings detected"
+          exit 1
+        else
+          echo "✅ Pipeline passed fail-on=$FAIL_SEVERITY threshold"
+          exit 0
+        fi
 
-    - name: Upload report artifact
+    - name: Upload report artifacts
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: devflow-risk-report
-        path: ${{ inputs.working-directory }}/${{ inputs.output-file }}
+        path: |
+          ${{ inputs.working-directory }}/${{ inputs.output-file }}
+          /tmp/devflow-ci.json
         retention-days: 30
-
-    - name: Post summary
-      if: always()
-      shell: bash
-      working-directory: ${{ inputs.working-directory }}
-      run: |
-        if [ -f "${{ inputs.output-file }}" ] && [ "${{ inputs.format }}" != "json" ] && [ "${{ inputs.format }}" != "html" ]; then
-          echo "## Devflow Audit Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          cat "${{ inputs.output-file }}" >> $GITHUB_STEP_SUMMARY
-        fi
 
 branding:
   icon: 'shield'

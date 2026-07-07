@@ -31,19 +31,23 @@ export async function auditCommand(
     riskTolerance?: string;
   },
 ): Promise<void> {
-  // 1. Banner
-  console.log(pc.bold("\n🔍 Devflow Audit — Local AI Code Review\n"));
+  // 1. Banner — to stderr when JSON output to keep stdout clean
+  const isJsonStdout = (options.format ?? "markdown") === "json" && !options.output;
+  const banner = (msg: string) => {
+    if (isJsonStdout) console.error(msg);
+    else console.log(msg);
+  };
+
+  banner(pc.bold("\n🔍 Devflow Audit — Local AI Code Review\n"));
 
   // 2. Show what's being audited
-  if (options.staged) {
-    console.log(pc.dim("Auditing staged changes only...\n"));
-  } else if (options.workingTree) {
-    console.log(pc.dim("Auditing working tree (unstaged changes)...\n"));
-  } else {
-    console.log(
-      pc.dim(`Auditing changes against base branch '${options.base ?? "main"}'...\n`),
-    );
+  const scopeParts: string[] = [];
+  if (options.staged) scopeParts.push("staged changes");
+  if (options.workingTree) scopeParts.push("unstaged working tree");
+  if (!options.staged && !options.workingTree) {
+    scopeParts.push("staged changes, unstaged working tree, and diff vs base");
   }
+  banner(pc.dim(`Scope: ${scopeParts.join(" + ")}`));
 
   // 3. Run audit
   const opts: AuditOptions = {
@@ -75,10 +79,12 @@ export async function auditCommand(
     fs.writeFileSync(options.output, output, "utf-8");
     console.log(pc.green(`✅ Report written to ${options.output}\n`));
   } else {
-    console.log(output);
+    process.stdout.write(output);
+    if (format !== "json") process.stdout.write("\n");
   }
 
-  // 5. Terminal summary with colored verdict
+  // 5. Terminal summary with colored verdict — to stderr when JSON
+  const log = isJsonStdout ? console.error : console.log;
   const emoji = VERDICT_EMOJI[report.verdict] ?? "❓";
   const verdictColor =
     report.verdict === "PASS"
@@ -87,27 +93,27 @@ export async function auditCommand(
         ? pc.yellow
         : pc.red;
 
-  console.log("");
-  console.log(pc.bold(`${emoji} Verdict: ${verdictColor(report.verdict)}`));
-  console.log(pc.dim(report.executiveSummary));
+  log("");
+  log(pc.bold(`${emoji} Verdict: ${verdictColor(report.verdict)}`));
+  log(pc.dim(report.executiveSummary));
 
   const m = report.severityMatrix;
   if (m.critical > 0 || m.high > 0 || m.medium > 0 || m.low > 0) {
-    console.log(
+    log(
       pc.dim(`  Critical: ${m.critical}  High: ${m.high}  Medium: ${m.medium}  Low: ${m.low}`),
     );
   }
-  console.log("");
+  log("");
 
   // 6. BLOCKED → exit code 1 (for CI/git hook use)
   if (report.verdict === "BLOCKED") {
-    console.log(pc.red("🚫 BLOCKED: Fix blocking issues before proceeding.\n"));
+    log(pc.red("🚫 BLOCKED: Fix blocking issues before proceeding.\n"));
     process.exit(1);
   }
 
   // 7. FAIL + strict mode → exit code 1
   if (report.verdict === "FAIL" && report.metadata.executionMode === "strict") {
-    console.log(pc.red("❌ FAIL: Blocking risks found in strict mode.\n"));
+    log(pc.red("❌ FAIL: Blocking risks found in strict mode.\n"));
     process.exit(1);
   }
 }

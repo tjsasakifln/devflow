@@ -56,10 +56,12 @@ function printTierList(): void {
       label: pc.green("STABLE      "),
       desc: "Fully implemented and tested.",
       commands: [
+        "audit",
         "init", "status", "next",
         "feature new", "feature complete", "feature prompt",
         "gatekeep", "adversarial-review", "review-pr",
         "doctor", "update-cockpit", "index",
+        "config",
       ],
     },
     {

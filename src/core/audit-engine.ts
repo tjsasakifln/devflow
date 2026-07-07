@@ -8,11 +8,14 @@
  */
 
 import path from "node:path";
-import { execSync } from "node:child_process";
 import { captureGitContext } from "../kernel/utils/git-context.js";
+import { buildDiffModel } from "../adapters/git/diff-model.js";
+import { loadExclusionRules, filterExcludedFiles } from "../adapters/git/exclusion-rules.js";
 import { detectStackProfile, type StackProfile } from "../kernel/detection/stack.js";
 import { fileExists, safeReadFile } from "../kernel/utils/fs.js";
 import { getVersion } from "../kernel/utils/version.js";
+import { getStackAdapter, detectStackFromFiles } from "../adapters/stacks/index.js";
+import type { StackAdapter } from "../adapters/stacks/types.js";
 import {
   type AuditReport,
   type AuditOptions,
@@ -28,57 +31,7 @@ import {
   createRisk,
 } from "./policy-engine.js";
 
-// ── Git helpers ──
-
-function runGit(args: string, cwd: string): string {
-  try {
-    return execSync(`git ${args}`, { cwd, encoding: "utf-8", timeout: 15000 }).trim();
-  } catch {
-    return "";
-  }
-}
-
-// ── Diff parsing ──
-
-function parseChangedFiles(nameStatus: string, numStat: string): ChangedFile[] {
-  if (!nameStatus.trim()) return [];
-
-  const numMap = new Map<string, { additions: number; deletions: number }>();
-  for (const line of numStat.split("\n")) {
-    if (!line.trim()) continue;
-    const [add, del, filePath] = line.split("\t");
-    if (add && del && filePath) {
-      numMap.set(filePath, {
-        additions: add === "-" ? 0 : parseInt(add, 10),
-        deletions: del === "-" ? 0 : parseInt(del, 10),
-      });
-    }
-  }
-
-  return nameStatus
-    .split("\n")
-    .filter((l) => l.trim())
-    .map((line) => {
-      const parts = line.split("\t");
-      const statusCode = parts[0]?.trim() ?? "";
-      const filePath = parts[1]?.trim() ?? parts[0]?.trim() ?? "";
-      let status: ChangedFile["status"] = "unknown";
-      if (statusCode.startsWith("A")) status = "added";
-      else if (statusCode.startsWith("M")) status = "modified";
-      else if (statusCode.startsWith("D")) status = "deleted";
-      else if (statusCode.startsWith("R")) status = "renamed";
-      else if (statusCode.startsWith("C")) status = "copied";
-
-      const nums = numMap.get(filePath);
-      return {
-        path: filePath,
-        status,
-        additions: nums?.additions,
-        deletions: nums?.deletions,
-        language: detectLanguageFromPath(filePath),
-      };
-    });
-}
+// ── Language detection ──
 
 function detectLanguageFromPath(filePath: string): string | undefined {
   if (/\.(ts|tsx)$/.test(filePath)) return "TypeScript";
@@ -90,24 +43,6 @@ function detectLanguageFromPath(filePath: string): string | undefined {
   if (/\.php$/.test(filePath)) return "PHP";
   if (/\.java$/.test(filePath)) return "Java";
   return undefined;
-}
-
-// ── Exclusion ──
-
-const DEFAULT_EXCLUDES = [
-  "dist/", "build/", ".next/", "__pycache__/", "*.generated.*",
-  "*.min.js", "*.min.css", "node_modules/", ".git/", "coverage/",
-  ".nyc_output/", "*.pyc", ".mypy_cache/", ".ruff_cache/",
-  "target/", "vendor/", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
-  ".devflow/", "_devflow/", "DEVFLOW.md",
-];
-
-function shouldExclude(filePath: string): boolean {
-  return DEFAULT_EXCLUDES.some((pattern) => {
-    if (pattern.endsWith("/")) return filePath.startsWith(pattern);
-    if (pattern.startsWith("*.")) return filePath.endsWith(pattern.slice(1));
-    return filePath === pattern;
-  });
 }
 
 // ── Dangerous pattern scan ──
@@ -368,7 +303,7 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
 
   // Git context
   const git = captureGitContext(cwd);
-  const branch = runGit("branch --show-current", cwd) || "unknown";
+  const branch = git.branch;
 
   // Stack detection
   let stack: StackProfile | null = null;
@@ -378,41 +313,103 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
 
   // Get changed files
   let changedFiles: ChangedFile[] = [];
+  let scopeDescription = "";
   const allRisks: Risk[] = [];
 
-  if (opts.staged) {
+  if (opts.staged && !opts.workingTree) {
     // Staged changes only
-    const nameStatus = runGit("diff --cached --name-status", cwd);
-    const numStat = runGit("diff --cached --numstat", cwd);
-    changedFiles = parseChangedFiles(nameStatus, numStat);
-  } else if (opts.workingTree) {
-    // Unstaged changes only
-    const nameStatus = runGit("diff --name-status", cwd);
-    const numStat = runGit("diff --numstat", cwd);
-    changedFiles = parseChangedFiles(nameStatus, numStat);
+    const model = await buildDiffModel(cwd, { staged: true, workingTree: false });
+    changedFiles = model.stagedFiles.map(f => ({
+      path: f.path,
+      status: f.status as ChangedFile["status"],
+      additions: f.additions,
+      deletions: f.deletions,
+      language: detectLanguageFromPath(f.path),
+    }));
+    scopeDescription = `${changedFiles.length} staged file(s)`;
+  } else if (opts.workingTree && !opts.staged) {
+    // Working tree (unstaged) only
+    const model = await buildDiffModel(cwd, { staged: false, workingTree: true });
+    changedFiles = model.unstagedFiles.map(f => ({
+      path: f.path,
+      status: f.status as ChangedFile["status"],
+      additions: f.additions,
+      deletions: f.deletions,
+      language: detectLanguageFromPath(f.path),
+    }));
+    scopeDescription = `${changedFiles.length} unstaged file(s)`;
+  } else if (opts.base && !opts.staged && !opts.workingTree) {
+    // Base diff only
+    const model = await buildDiffModel(cwd, { base: opts.base, staged: true, workingTree: false });
+    changedFiles = model.stagedFiles.map(f => ({
+      path: f.path,
+      status: f.status as ChangedFile["status"],
+      additions: f.additions,
+      deletions: f.deletions,
+      language: detectLanguageFromPath(f.path),
+    }));
+    scopeDescription = `${changedFiles.length} file(s) vs ${opts.base}`;
   } else {
-    // Default: diff vs base branch
-    const mergeBase = runGit(`merge-base ${base} HEAD`, cwd);
-    const diffBase = mergeBase || base;
+    // Default: all three scopes merged
+    const wdModel = await buildDiffModel(cwd, {});
+    const baseModel = await buildDiffModel(cwd, { base });
 
-    // Verify base exists
-    const baseExists = runGit(`rev-parse --verify ${base}`, cwd) ||
-      runGit(`rev-parse --verify origin/${base}`, cwd);
-    const effectiveBase = baseExists ? diffBase : "HEAD~10";
+    const stagedFiles: ChangedFile[] = wdModel.stagedFiles.map(f => ({
+      path: f.path,
+      status: f.status as ChangedFile["status"],
+      additions: f.additions,
+      deletions: f.deletions,
+      language: detectLanguageFromPath(f.path),
+    }));
+    const unstagedFiles: ChangedFile[] = wdModel.unstagedFiles.map(f => ({
+      path: f.path,
+      status: f.status as ChangedFile["status"],
+      additions: f.additions,
+      deletions: f.deletions,
+      language: detectLanguageFromPath(f.path),
+    }));
+    const baseDiffFiles: ChangedFile[] = baseModel.stagedFiles.map(f => ({
+      path: f.path,
+      status: f.status as ChangedFile["status"],
+      additions: f.additions,
+      deletions: f.deletions,
+      language: detectLanguageFromPath(f.path),
+    }));
 
-    const nameStatus = runGit(`diff --name-status ${effectiveBase}..HEAD`, cwd);
-    const numStat = runGit(`diff --numstat ${effectiveBase}..HEAD`, cwd);
-    changedFiles = parseChangedFiles(nameStatus, numStat);
+    // Merge and deduplicate by path
+    const merged = new Map<string, ChangedFile>();
+    for (const file of [...stagedFiles, ...unstagedFiles, ...baseDiffFiles]) {
+      merged.set(file.path, file);
+    }
+    changedFiles = Array.from(merged.values());
+
+    scopeDescription = `${stagedFiles.length} staged, ${unstagedFiles.length} unstaged, ${baseDiffFiles.length} vs ${base} — ${changedFiles.length} unique file(s)`;
   }
 
-  // Filter excluded files
-  changedFiles = changedFiles.filter((f) => !shouldExclude(f.path));
+  // Apply exclusion rules
+  const rules = loadExclusionRules(cwd);
+  const includedPaths = filterExcludedFiles(changedFiles.map(f => f.path), rules);
+  const includedSet = new Set(includedPaths);
+  changedFiles = changedFiles.filter(f => includedSet.has(f.path));
 
   // Feature detection
   const { featureId, artifactRisks, evidenceChecks } =
     await detectFeature(cwd);
 
   allRisks.push(...artifactRisks);
+
+  // Stack-specific hints collected from adapters
+  const stackHints: string[] = [];
+
+  // Detect unique languages from changed files
+  const changedPaths = changedFiles.map(f => f.path);
+  const languages = detectStackFromFiles(changedPaths);
+
+  // Resolve adapters per language
+  const adapters = new Map<string, StackAdapter | null>();
+  for (const lang of languages) {
+    adapters.set(lang, getStackAdapter(lang));
+  }
 
   // Scan changed files for dangerous patterns
   for (const file of changedFiles) {
@@ -428,10 +425,45 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
       continue;
     }
 
-    const fileRisks = scanFileForPatterns(file.path, content, tolerance);
-    allRisks.push(...fileRisks);
+    // 1. Run universal patterns (always)
+    const universalRisks = scanFileForPatterns(file.path, content, tolerance);
+    allRisks.push(...universalRisks);
+
+    // 2. Run stack-specific patterns via adapter
+    const lang = file.language?.toLowerCase();
+    const adapter = lang ? (adapters.get(lang) ?? null) : null;
+
+    if (adapter && adapter.detectDangerousPatterns) {
+      try {
+        const stackPatterns = await adapter.detectDangerousPatterns(file.path, content);
+        const stackRisks = stackPatterns.map(p => createRisk(
+          p.severity,
+          p.category,
+          `${p.description} (${p.pattern})`,
+          p.recommendation,
+          tolerance,
+          { file: p.file, line: p.line },
+        ));
+        allRisks.push(...stackRisks);
+      } catch {
+        // Adapter pattern detection is best-effort
+      }
+    }
+
+    // 3. Collect stack-specific risk hints
+    if (adapter && adapter.renderRiskHints) {
+      try {
+        const hints = adapter.renderRiskHints(allRisks);
+        if (hints.length > 0) {
+          stackHints.push(...hints);
+        }
+      } catch {
+        // Hints are best-effort
+      }
+    }
 
     // Set file risk level based on max severity found
+    const fileRisks = allRisks.filter(r => r.file === file.path);
     if (fileRisks.length > 0) {
       const severities = fileRisks.map((r) => r.severity);
       if (severities.includes("CRITICAL")) file.riskLevel = "CRITICAL";
@@ -460,6 +492,22 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
     evidenceChecks.push({ type: "lint-result", label: "Linter", present: false, detail: "No linter detected" });
   }
 
+  // Stack adapter coverage
+  if (languages.length > 0) {
+    const adapterNames = languages
+      .map(l => adapters.get(l))
+      .filter((a): a is StackAdapter => a !== null)
+      .map(a => a.language);
+    evidenceChecks.push({
+      type: "test-result",
+      label: "Stack Adapters",
+      present: adapterNames.length > 0,
+      detail: adapterNames.length > 0
+        ? `Active: ${adapterNames.join(", ")} (${languages.length - adapterNames.length} without adapter)`
+        : `No stack adapters available for: ${languages.join(", ")}`,
+    });
+  }
+
   // CI status
   const hasCI = await fileExists(path.join(cwd, ".github", "workflows")) ||
     await fileExists(path.join(cwd, ".gitlab-ci.yml"));
@@ -471,7 +519,7 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
   });
 
   // Working tree cleanliness
-  if (git.gitStatus === "dirty" && !opts.staged) {
+  if (git.gitStatus === "dirty" && opts.staged === true) {
     allRisks.push(createRisk(
       "LOW",
       "governance",
@@ -553,6 +601,8 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
     devflowGovernedBadge: "[![Devflow Governed](https://img.shields.io/badge/Devflow-Governed-6e3af2)](https://github.com/tjsasakifln/devflow)",
     featureId,
     prSnippet,
+    scopeDescription,
+    stackHints,
   };
 }
 
