@@ -343,7 +343,7 @@ async function runAllDoDChecks(
   // ── Check 22: Loop validation ──
   await checkLoopValidation(checks, featureDir);
 
-  // ── Check 23: Semantic quality ──
+  // ── Check 23: Heuristic semantic quality ──
   await checkSemanticQuality(checks, featureDir);
 
   // ── Check 24: Test plan ──
@@ -1060,22 +1060,22 @@ async function checkSemanticQuality(checks: DoDCheck[], featureDir: string) {
       const result = validateRequirementsSemantic(md);
       checks.push({
         id: "22",
-        description: "Semantic quality (artifacts have real content, not boilerplate)",
+        description: "Heuristic semantic quality (artifacts have real content, not boilerplate)",
         category: "artifact",
         passed: result.valid,
         evidence: result.valid
-          ? `Semantic quality score: ${result.score}/100`
-          : `Semantic failures: ${result.failures.map((f) => `${f.section}: ${f.issue}`).join("; ")}`,
+          ? `Heuristic quality score: ${result.score}/100`
+          : `Heuristic quality gaps: ${result.failures.map((f) => `${f.section}: ${f.issue}`).join("; ")}`,
         blocking: true,
-        remediation: `Replace generic placeholder content. Score: ${result.score}/100. Issues: ${result.failures.map((f) => f.issue).join(". ")}`,
+        remediation: `Replace generic placeholder content. Heuristic score: ${result.score}/100. Issues: ${result.failures.map((f) => f.issue).join(". ")}`,
       });
     } catch {
       checks.push({
         id: "22",
-        description: "Semantic quality (artifacts have real content)",
+        description: "Heuristic semantic quality (artifacts have real content)",
         category: "artifact",
         passed: true,
-        evidence: "Semantic validator not available",
+        evidence: "Heuristic semantic validator not available",
         blocking: false,
         remediation: "N/A",
       });

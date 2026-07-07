@@ -441,7 +441,7 @@ export async function checkPipelineReadiness(
     }
   }
 
-  // ── Gate 15: Semantic quality ──
+  // ── Gate 15: Heuristic semantic quality check ──
   if (feature.hasRequirements) {
     try {
       const reqPath = path.join(featureDir, "requirements.md");
@@ -451,22 +451,22 @@ export async function checkPipelineReadiness(
         const semanticResult = validateRequirementsSemantic(reqMd);
         checks.push(makeCheck(
           "semantic-quality",
-          "Artifacts have real semantic content (not filler)",
+          "Heuristic semantic quality check (artifacts have real content, not filler)",
           semanticResult.valid,
           semanticResult.valid
-            ? `Requirements semantic quality score: ${semanticResult.score}/100`
-            : `Semantic failures: ${semanticResult.failures.map((f) => f.issue).join("; ")}`,
+            ? `Requirements heuristic quality score: ${semanticResult.score}/100`
+            : `Heuristic quality gaps: ${semanticResult.failures.map((f) => f.issue).join("; ")}`,
           15,
           true,
-          `Replace generic placeholder content with specific details. Score: ${semanticResult.score}/100.`,
+          `Replace generic placeholder content with specific details. Heuristic score: ${semanticResult.score}/100.`,
         ));
       }
     } catch {
       checks.push(makeCheck(
         "semantic-quality",
-        "Artifacts have real semantic content (not filler)",
+        "Heuristic semantic quality check (artifacts have real content, not filler)",
         true,
-        "Semantic validation skipped — could not load validator",
+        "Heuristic semantic validation skipped — could not load validator",
         15,
         false,
         "N/A",
