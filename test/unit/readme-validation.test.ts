@@ -84,4 +84,35 @@ describe("README.md Validation", () => {
       expect(previewSection.length).toBeGreaterThan(50);
     }
   });
+
+  it("should recommend npx @tjsasakinpm/devflow install as primary entry point", () => {
+    // The README must document install (not init) as the recommended first-use command
+    expect(readmeContent).toContain("npx @tjsasakinpm/devflow install");
+    // The first npx @tjsasakinpm/devflow reference should use 'install', not 'init'
+    const firstNpxRef = readmeContent.match(/npx @tjsasakinpm\/devflow \w+/);
+    expect(firstNpxRef).not.toBeNull();
+    expect(firstNpxRef![0]).toBe("npx @tjsasakinpm/devflow install");
+  });
+
+  it("should not use unscoped npx devflow install", () => {
+    // Must always use the scoped package name — "devflow" is unavailable on npm
+    expect(readmeContent).not.toContain("npx devflow install");
+  });
+
+  it("should not reference old package name @devflow/cli", () => {
+    expect(readmeContent).not.toContain("npx @devflow/cli");
+    expect(readmeContent).not.toContain("@devflow/cli");
+  });
+
+  it("should document install as for users and init as for scripts", () => {
+    // The Installation section must frame install as guided (for people)
+    // and init as technical (for scripts/automation)
+    const installSection = readmeContent.split("## Development")[0];
+    if (installSection) {
+      // install is the recommended path with guided onboarding
+      expect(installSection).toMatch(/Recommended|Guided|guided/);
+      // init is the technical alternative for scripts
+      expect(installSection).toMatch(/script|automation|Technical/);
+    }
+  });
 });

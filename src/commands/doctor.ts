@@ -99,15 +99,15 @@ export async function doctorCommand(
   } else {
     checks.push({
       id: 4, name: "Devflow directories", status: "FAIL",
-      message: ".devflow/ missing — run devflow init",
+      message: ".devflow/ missing — run devflow install",
       remediation: {
         title: "Devflow not initialized",
         whyMatters: "All Devflow state, checks, and audits live in .devflow/. Without it, nothing works.",
         impact: "No commands except init and doctor will function.",
-        suggestedFix: "Run `devflow init` to scaffold the project.",
-        minimalExample: "devflow init",
+        suggestedFix: "Run `devflow install` to scaffold the project.",
+        minimalExample: "devflow install",
         severity: "blocking",
-        copyableCommand: "devflow init",
+        copyableCommand: "devflow install",
       },
     });
   }

@@ -101,7 +101,7 @@ export async function statusCommand(
   if (stateResult.blockers.length > 0) {
     console.log(pc.dim("  Resolve blockers above, then run `devflow next` for guidance."));
   } else if (stateResult.currentState === "no-project" || stateResult.currentState === "brownfield-unknown") {
-    console.log(pc.dim("  Run `devflow init` to initialize Devflow in this project."));
+    console.log(pc.dim("  Run `devflow install` to initialize Devflow in this project."));
   } else if (stateResult.currentState === "feature-done") {
     console.log(pc.dim("  Feature complete. Create PR and merge. Then `devflow feature new <name>` for next feature."));
   } else {

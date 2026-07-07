@@ -230,10 +230,10 @@ export async function checkPipelineReadiness(
       "constitution-check",
       "Code respects engineering constitution",
       true,
-      "Constitution not yet configured — run `devflow init` to enable",
+      "Constitution not yet configured — run `devflow install` to enable",
       11,
       false,
-      "Run `devflow init` to configure constitution checks",
+      "Run `devflow install` to configure constitution checks",
     ));
   }
 

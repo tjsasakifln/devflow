@@ -40,7 +40,7 @@ Starting from scratch or a minimal codebase.
 
 ```bash
 # 1. Install Devflow in your project
-npx @tjsasakinpm/devflow init
+npx @tjsasakinpm/devflow install
 
 # 2. Check your project state
 devflow status
@@ -79,8 +79,8 @@ devflow gatekeep 001-user-authentication --approve --actor "reviewer-name"
 Working with an existing project that was not built with Devflow.
 
 ```bash
-# 1. Initialize Devflow in the existing project
-devflow init
+# 1. Install Devflow in the existing project
+npx @tjsasakinpm/devflow install
 
 # 2. Discover and map the existing codebase
 devflow discover
@@ -244,11 +244,30 @@ devflow gatekeep my-feature --approve  # If actor matches implementer
 
 ## Installation
 
+The package is `@tjsasakinpm/devflow` (scoped); the binary is `devflow`. This is standard npm — the package name and the command name can differ.
+
+### Recommended (no install needed)
+
+```bash
+npx @tjsasakinpm/devflow install
+```
+
+Guided first-run onboarding: stack detection, environment checks, project initialization.
+
+### Optional (global install)
+
 ```bash
 npm install -g @tjsasakinpm/devflow
-# or
+devflow install
+```
+
+### Technical / Advanced
+
+```bash
 npx @tjsasakinpm/devflow init
 ```
+
+`init` skips guided onboarding. Better for scripts and automation.
 
 Requires Node.js >= 18.
 

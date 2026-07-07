@@ -47,7 +47,7 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
     targetStates: ["greenfield-idea"],
     primaryAction: {
       id: "init-project",
-      description: "Run `devflow init` to initialize the Devflow project structure",
+      description: "Run `devflow install` to initialize the Devflow project structure",
       why: "No project scaffolding detected. Devflow needs to create .devflow/ and _devflow/ directories and initialize the cockpit.",
       agentOrWorkflow: "orchestrator",
       writes: [".devflow/config.json", ".devflow/state.json", "DEVFLOW.md"],
@@ -116,7 +116,7 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
     primaryAction: {
       id: "init-discover",
       description:
-        "Run `devflow init` to discover and map the existing project structure",
+        "Run `devflow install` to discover and map the existing project structure",
       why: "Code exists but Devflow hasn't been initialized. The project needs discovery to understand its structure, stack, and current state before any changes.",
       agentOrWorkflow: "cartographer",
       writes: [".devflow/config.json", ".devflow/state.json", "DEVFLOW.md"],

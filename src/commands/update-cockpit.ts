@@ -15,7 +15,7 @@ export async function updateCockpitCommand(cwd: string): Promise<void> {
   // Verify Devflow is initialized
   if (!(await fileExists(path.join(rootPath, ".devflow", "config.json")))) {
     console.log(
-      pc.red("Error: Devflow is not initialized. Run `devflow init` first.")
+      pc.red("Error: Devflow is not initialized. Run `devflow install` first.")
     );
     return;
   }

@@ -270,7 +270,7 @@ export function renderValidationCommands(inspection: ProjectInspection): string 
   }
 
   if (!stack?.testCommand && !stack?.typeCheckCommand && !stack?.lintCommand) {
-    lines.push("_Stack not detected — run `devflow init` to configure_");
+    lines.push("_Stack not detected — run `devflow install` to configure_");
     lines.push("- `npm test` (or equivalent for your stack)");
   }
 

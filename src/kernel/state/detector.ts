@@ -321,7 +321,7 @@ function extractBlockers(
 
   switch (state) {
     case "no-project":
-      blockers.push("No project structure detected — run devflow init");
+      blockers.push("No project structure detected — run devflow install");
       break;
     case "brownfield-unknown":
       blockers.push(

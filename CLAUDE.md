@@ -71,10 +71,10 @@ Opção global: `--mode local|experimental|strict|release`
 ## Fluxos de Primeiro Uso
 
 ### Greenfield (projeto novo)
-`install` → `init` → `feature new` → `next` → preencher artefatos → `feature prompt` → codar
+`install` → `feature new` → `next` → preencher artefatos → `feature prompt` → codar
 
 ### Brownfield (código existente)
-`init` → `discover` → ler relatórios → `feature new` → `legacy-impact.md` → codar
+`install` → `discover` → ler relatórios → `feature new` → `legacy-impact.md` → codar
 
 ### Com Agente de IA
 Ler `DEVFLOW.md` → respeitar "Current Instruction for Agents" → nunca codar antes de `feature-coding-ready`
