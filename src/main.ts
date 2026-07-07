@@ -56,7 +56,7 @@ function printTierList(): void {
       desc: "Fully implemented and tested.",
       commands: [
         "init", "status", "next",
-        "feature new", "feature complete",
+        "feature new", "feature complete", "feature prompt",
         "gatekeep", "adversarial-review",
         "doctor", "update-cockpit", "index",
       ],

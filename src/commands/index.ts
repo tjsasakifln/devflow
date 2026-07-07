@@ -1,15 +1,18 @@
 import type { Command } from "commander";
 import { ADVERSARIAL_VECTOR_COUNT } from "../kernel/constants.js";
 import { initCommand } from "./init.js";
+import { installCommand } from "./install.js";
 import { statusCommand } from "./status.js";
 import { nextCommand } from "./next.js";
 import { featureNewCommand } from "./feature.js";
 import { featureComplete } from "./feature-complete.js";
+import { featurePromptCommand } from "./feature-prompt.js";
 import { gatekeep } from "./gatekeep.js";
 import { adversarialReview } from "./adversarial-review.js";
 import { doctorCommand } from "./doctor.js";
 import { updateCockpitCommand } from "./update-cockpit.js";
 import { indexProject } from "./index-project.js";
+import { discoverCommand } from "./discover.js";
 import { runEvals } from "./eval-run.js";
 import pc from "picocolors";
 
@@ -49,6 +52,76 @@ export function registerCommands(program: Command): void {
     });
 
   program
+    .command("install")
+    .description("Guided first-run setup — user-friendly alternative to init")
+    .option("--yes", "Skip prompts and use defaults")
+    .option("--mode <mode>", "Execution mode: local, experimental, strict, release")
+    .option("--agent <agent>", "AI agent integration: claude, cursor, none")
+    .option("--review-mode <mode>", "Review mode: independent, solo-hardened")
+    .option("--non-interactive", "Skip interactive prompts")
+    .option("--dry-run", "Preview without writing files")
+    .action(async (options) => {
+      await installCommand(process.cwd(), {
+        yes: options.yes,
+        mode: options.mode,
+        agent: options.agent,
+        reviewMode: options.reviewMode,
+        nonInteractive: options.nonInteractive,
+        dryRun: options.dryRun,
+      });
+    });
+
+  // ── Config management ──
+  const configCmd = program
+    .command("config")
+    .description("Manage Devflow configuration");
+
+  configCmd
+    .command("set <key> <value>")
+    .description("Set a configuration value (e.g., reviewMode solo-hardened)")
+    .action(async (key: string, value: string) => {
+      const { ConfigManager } = await import("../config/index.js");
+      const mgr = new ConfigManager(process.cwd());
+      const config = await mgr.load();
+
+      const validKeys = ["reviewMode", "executionMode"];
+      if (!validKeys.includes(key)) {
+        console.log(pc.yellow(`Unknown config key: ${key}`));
+        console.log(pc.dim(`Valid keys: ${validKeys.join(", ")}`));
+        return;
+      }
+
+      if (key === "reviewMode" && !["independent", "solo-hardened"].includes(value)) {
+        console.log(pc.yellow(`Invalid value for reviewMode: ${value}`));
+        console.log(pc.dim("Valid values: independent, solo-hardened"));
+        return;
+      }
+
+      if (key === "executionMode" && !["local", "experimental", "strict", "release"].includes(value)) {
+        console.log(pc.yellow(`Invalid value for executionMode: ${value}`));
+        console.log(pc.dim("Valid values: local, experimental, strict, release"));
+        return;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (config as any)[key] = value;
+      await mgr.save(config);
+      console.log(pc.green(`✅ ${key} = ${value}`));
+
+      if (key === "reviewMode" && value === "solo-hardened") {
+        console.log();
+        console.log(pc.yellow("⚠️  Solo-Hardened Review Mode:"));
+        console.log(pc.yellow("   - Independent human review will NOT be required"));
+        console.log(pc.yellow("   - Adversarial review becomes MANDATORY for approval"));
+        console.log(pc.yellow("   - All deterministic checks must pass"));
+        console.log(pc.yellow("   - Gatekeep log will document this as solo-hardened approval"));
+        console.log();
+        console.log(pc.dim("   This is NOT equivalent to independent review."));
+        console.log(pc.dim("   Consider seeking a second reviewer when possible."));
+      }
+    });
+
+  program
     .command("status")
     .description("Show current project state and status")
     .option("--json", "Output as JSON")
@@ -85,6 +158,16 @@ export function registerCommands(program: Command): void {
     .description("Verify feature completion — runs 25 Definition of Done checks")
     .action(async (id: string) => {
       await featureComplete(id, process.cwd());
+    });
+
+  featureCmd
+    .command("prompt <id>")
+    .description("Generate structured implementation prompt for AI agents (Claude Code, Cursor, etc.)")
+    .option("--copy", "Copy prompt to clipboard")
+    .option("--output <file>", "Write prompt to a specific file")
+    .option("--save", "Save prompt to feature directory as implementation-prompt.md")
+    .action(async (id: string, options: { copy?: boolean; output?: string; save?: boolean }) => {
+      await featurePromptCommand(process.cwd(), id, options);
     });
 
   // gatekeep
@@ -159,19 +242,18 @@ export function registerCommands(program: Command): void {
 
   program
     .command("discover")
-    .description("[EXPERIMENTAL] Discover and document brownfield project")
-    .option("--ai", "Use AI-assisted discovery")
+    .description("[EXPERIMENTAL] Discover and document brownfield project structure, risks, testing baseline, and change zones")
+    .option("--ai", "Use AI-assisted discovery (not yet available)")
     .action(async (options) => {
       if (options.ai) {
         renderPreviewStub(
           "devflow discover --ai",
           "AI-assisted brownfield discovery",
           "Phase 3 of Devflow roadmap",
-          "Use devflow discover (without --ai) for structural discovery.",
+          "Use devflow discover (without --ai) for structural discovery — generates 4 reports.",
         );
       } else {
-        console.log("Running structural discovery...");
-        await indexProject(process.cwd());
+        await discoverCommand(process.cwd());
       }
     });
 
