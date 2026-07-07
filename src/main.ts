@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { registerCommands } from "./commands/index.js";
+import { registerCommands } from "./cli/index.js";
 import { getVersion } from "./kernel/utils/version.js";
 import pc from "picocolors";
 

@@ -1,0 +1,111 @@
+# Devflow PR Governance — Example GitHub Actions Workflow
+#
+# Copy this file to .github/workflows/devflow.yml in your repository.
+# Requires: Node.js >= 18, git history (fetch-depth: 0)
+#
+# This workflow:
+# 1. Runs Devflow audit on every PR
+# 2. Generates a risk report as a PR comment artifact
+# 3. Posts results to the GitHub Step Summary
+# 4. Optionally fails the pipeline on HIGH or CRITICAL findings
+
+name: Devflow PR Governance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  audit:
+    name: Devflow Audit — AI Code Risk Report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required: full git history for diff analysis
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Devflow
+        run: npm install -g @tjsasakinpm/devflow
+
+      - name: Run Devflow Audit
+        id: devflow
+        run: |
+          devflow review-pr \
+            --base "origin/${{ github.base_ref }}" \
+            --format markdown \
+            --output devflow-report.md \
+            --risk-tolerance moderate
+
+          # Extract verdict
+          VERDICT=$(grep -oP '## Verdict:\s*\K\S+' devflow-report.md | head -1 || echo "UNKNOWN")
+          echo "verdict=$VERDICT" >> $GITHUB_OUTPUT
+
+          # Post to step summary
+          {
+            echo "## 🔍 Devflow AI Code Audit"
+            echo ""
+            echo "**Verdict:** $VERDICT"
+            echo "**PR:** ${{ github.event.pull_request.html_url }}"
+            echo "**Branch:** ${{ github.head_ref }} → ${{ github.base_ref }}"
+            echo ""
+            cat devflow-report.md
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: devflow-risk-report
+          path: devflow-report.md
+          retention-days: 30
+
+      - name: Comment PR with report
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('devflow-report.md', 'utf8');
+
+            // Extract the PR snippet section (between <details> and </details>)
+            const snippetMatch = report.match(/<details>[\s\S]*?<\/details>/);
+            const snippet = snippetMatch ? snippetMatch[0] : report.substring(0, 1000);
+
+            const body = `## 🔍 Devflow AI Code Audit
+
+            ${snippet}
+
+            <details>
+            <summary>📋 Full Risk Report</summary>
+
+            ${report}
+
+            </details>
+
+            ---
+            🤖 Generated with [Devflow](https://github.com/tjsasakifln/devflow) — local AI coding governance.`;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Fail on critical risks
+        if: steps.devflow.outputs.verdict == 'BLOCKED'
+        run: |
+          echo "❌ Devflow audit BLOCKED this PR. See report for details."
+          exit 1

@@ -1,7 +1,7 @@
 {
   "name": "@tjsasakinpm/devflow",
-  "version": "0.3.0",
-  "description": "PR governance for AI-generated code — reduce risk, enforce evidence, produce auditable trails. Fool-resistant, not fool-proof.",
+  "version": "0.4.0",
+  "description": "Local AI coding governance CLI for Claude Code, Cursor and Copilot. Audit AI-generated changes before PR, enforce evidence, run adversarial review and generate PR risk reports.",
   "type": "module",
   "main": "./dist/main.js",
   "types": "./dist/main.d.ts",
@@ -28,18 +28,14 @@
     "prepack": "npm run build"
   },
   "keywords": [
-    "devflow",
-    "ai-governance",
-    "pr-review",
-    "ai-generated-code",
-    "code-review-automation",
-    "evidence-trail",
-    "definition-of-done",
-    "adversarial-review",
-    "spec-driven-development",
-    "claude-code",
-    "cursor",
-    "engineering-governance"
+    "ai-code-review", "ai-code-audit", "ai-coding-governance",
+    "claude-code", "cursor-ai", "copilot", "pre-pr-review",
+    "pull-request-risk", "software-governance", "agentic-coding",
+    "ai-engineering", "technical-debt", "definition-of-done",
+    "local-first", "developer-tools", "devtools", "code-quality",
+    "security-review", "architecture-review", "github-actions",
+    "spec-driven-development", "evidence-trail", "adversarial-review",
+    "devflow"
   ],
   "license": "MIT",
   "repository": {

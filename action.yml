@@ -1,0 +1,138 @@
+name: 'Devflow PR Risk Report'
+description: 'Audit AI-generated code changes and generate a PR risk report — local AI coding governance for Claude Code, Cursor, and Copilot'
+author: 'Devflow'
+
+inputs:
+  format:
+    description: 'Output format for the risk report'
+    required: false
+    default: 'markdown'
+  risk-tolerance:
+    description: 'Risk tolerance level (relaxed | moderate | strict)'
+    required: false
+    default: 'moderate'
+  fail-on:
+    description: 'Fail pipeline when findings at or above this severity (CRITICAL | HIGH | MEDIUM | never)'
+    required: false
+    default: 'HIGH'
+  working-directory:
+    description: 'Working directory for the audit'
+    required: false
+    default: '.'
+  base-branch:
+    description: 'Base branch to compare against'
+    required: false
+    default: 'main'
+  output-file:
+    description: 'Path for the generated report file'
+    required: false
+    default: 'devflow-report.md'
+
+outputs:
+  verdict:
+    description: 'Audit verdict (PASS | WARN | FAIL | BLOCKED)'
+    value: ${{ steps.audit.outputs.verdict }}
+  report-path:
+    description: 'Path to the generated report file'
+    value: ${{ steps.audit.outputs.report-path }}
+  critical-count:
+    description: 'Number of CRITICAL findings'
+    value: ${{ steps.audit.outputs.critical-count }}
+  high-count:
+    description: 'Number of HIGH findings'
+    value: ${{ steps.audit.outputs.high-count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+
+    - name: Install Devflow
+      shell: bash
+      run: npm install -g @tjsasakinpm/devflow
+
+    - name: Run Devflow Audit
+      id: audit
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        # Build format flag
+        FORMAT_FLAG=""
+        if [ "${{ inputs.format }}" = "json" ]; then
+          FORMAT_FLAG="--json"
+        elif [ "${{ inputs.format }}" = "html" ]; then
+          FORMAT_FLAG="--format html"
+        fi
+
+        # Run audit
+        devflow review-pr \
+          --base "${{ inputs.base-branch }}" \
+          --output "${{ inputs.output-file }}" \
+          $FORMAT_FLAG \
+          --risk-tolerance "${{ inputs.risk-tolerance }}" \
+          2>&1 || AUDIT_EXIT=$?
+
+        # Extract verdict from report (JSON path)
+        VERDICT="UNKNOWN"
+        if [ -f "${{ inputs.output-file }}" ]; then
+          if [ "${{ inputs.format }}" = "json" ]; then
+            VERDICT=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('${{ inputs.output-file }}','utf8')).verdict)}catch(e){console.log('UNKNOWN')}")
+          elif [ "${{ inputs.format }}" = "markdown" ]; then
+            VERDICT=$(grep -oP 'Verdict:\s*\K(PASS|WARN|FAIL|BLOCKED)' "${{ inputs.output-file }}" | head -1 || echo "UNKNOWN")
+            # Also write to GITHUB_STEP_SUMMARY
+            cat "${{ inputs.output-file }}" >> $GITHUB_STEP_SUMMARY
+          else
+            VERDICT="SEE_REPORT"
+          fi
+        fi
+
+        echo "verdict=$VERDICT" >> $GITHUB_OUTPUT
+        echo "report-path=${{ inputs.output-file }}" >> $GITHUB_OUTPUT
+
+        # Extract severity counts
+        CRITICAL=$(grep -c "CRITICAL" "${{ inputs.output-file }}" 2>/dev/null || echo "0")
+        HIGH=$(grep -c "HIGH" "${{ inputs.output-file }}" 2>/dev/null || echo "0")
+        echo "critical-count=$CRITICAL" >> $GITHUB_OUTPUT
+        echo "high-count=$HIGH" >> $GITHUB_OUTPUT
+
+        # Fail pipeline based on fail-on threshold
+        FAIL_SEVERITY="${{ inputs.fail-on }}"
+        if [ "$FAIL_SEVERITY" = "CRITICAL" ] && [ "$CRITICAL" -gt 0 ]; then
+          echo "❌ Blocking: CRITICAL findings detected"
+          exit 1
+        elif [ "$FAIL_SEVERITY" = "HIGH" ] && ([ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]); then
+          echo "❌ Blocking: HIGH or above findings detected"
+          exit 1
+        elif [ "$FAIL_SEVERITY" = "MEDIUM" ] && [ $((CRITICAL + HIGH)) -gt 0 ]; then
+          echo "❌ Blocking: MEDIUM or above findings detected"
+          exit 1
+        fi
+
+        # Always exit 0 for display (report is the artifact)
+        exit 0
+
+    - name: Upload report artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: devflow-risk-report
+        path: ${{ inputs.working-directory }}/${{ inputs.output-file }}
+        retention-days: 30
+
+    - name: Post summary
+      if: always()
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if [ -f "${{ inputs.output-file }}" ] && [ "${{ inputs.format }}" != "json" ] && [ "${{ inputs.format }}" != "html" ]; then
+          echo "## Devflow Audit Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat "${{ inputs.output-file }}" >> $GITHUB_STEP_SUMMARY
+        fi
+
+branding:
+  icon: 'shield'
+  color: 'purple'

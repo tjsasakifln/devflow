@@ -1,45 +1,88 @@
-# Devflow
+# Devflow — Local AI Coding Governance
 
-> PR governance for AI-generated code — reduce risk, enforce evidence, produce auditable trails.
+> Engineer AI-generated code with auditable evidence, pre-PR risk reports, and engineering guardrails that work locally. No cloud, no API keys, no blind trust.
 
 [![npm version](https://img.shields.io/npm/v/@tjsasakinpm/devflow)](https://www.npmjs.com/package/@tjsasakinpm/devflow)
 [![npm install](https://img.shields.io/badge/npx_install-@tjsasakinpm/devflow-blue)](https://www.npmjs.com/package/@tjsasakinpm/devflow)
 [![node >= 18](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![local-first](https://img.shields.io/badge/local--first-no--cloud-7B61FF)](https://github.com/tjsasakifln/devflow)
 
-## Why Devflow?
+---
 
-AI agents (Claude Code, Cursor, Copilot) ship code fast. They also ship code without requirements, tests, evidence, review, or traceability. **Devflow exists to stop that.**
+## Use Devflow if…
 
-It doesn't promise bug-free code. It doesn't claim to make AI code safe. It makes AI-generated code **auditable**: every change linked to a feature, every feature backed by evidence, every merge gated by adversarial review.
+- **You're receiving AI-generated PRs with no evidence of testing or review** — Devflow makes the invisible visible before code lands.
+- **You use Claude Code, Cursor, or Copilot and want guardrails** before code reaches PR — audit locally, fail fast, fix before push.
+- **You need a risk report to paste into a PR** before asking for human review — `devflow review-pr` generates markdown you can attach.
+- **You work in a legacy codebase and AI agents keep breaking architecture boundaries** — Devflow enforces spec-driven coding and catches architectural drift.
+- **You're a solo founder who ships fast but worries about accumulating technical debt** — relaxed mode keeps you moving without losing the audit trail.
+- **You want CI/CD integration for AI code governance** without sending code to the cloud — Devflow runs locally and also works in GitHub Actions.
+- **Your team confuses "the tests pass" with "the code is well-engineered"** — Devflow checks evidence, not just green CI.
+- **You need an audit trail to show compliance**, not just a green CI checkmark — every decision is logged with hashes, actor identity, and git context.
 
-**Enforcement model:** Devflow blocks when you voluntarily run its commands. Optional git hooks make it mandatory. Devflow is not a sandbox and cannot prevent deliberate bypass — but it creates an audit trail that makes bypass visible.
+---
+
+## Quick Commands Per Use Case
+
+| You Need This | Run That |
+|---|---|
+| **Audit AI-generated changes before commit** | `devflow audit` |
+| **Generate a PR risk report** | `devflow review-pr --format markdown` |
+| **Full AI governance workflow** | `feature new` -> `feature complete` -> `gatekeep` |
+| **Run AI code audit in CI** | See [GitHub Actions section](#github-actions) |
+| **Adversarial review of a feature** | `devflow adversarial-review <id>` |
+
+---
 
 ## What Devflow Does
 
-- Enforces a spec-driven workflow before AI agents write code
-- Runs 25 Definition of Done checks including integrity consolidation
-- Generates structured implementation prompts for AI agents
-- Adversarial review across 12 attack vectors (including bypass attempts)
-- Independent gatekeeper review (implementer ≠ approver)
-- Generates **PR risk reports** you can paste into any pull request
-- Produces auditable evidence (actor identity, hashes, git context)
-- Stack-adaptive validation: TypeScript, JavaScript, Python, Go, Rust, PHP, Java
-- Configurable risk tolerance: relaxed (solo), moderate (team), strict (release)
+- **Audits AI-generated changes** before they reach a PR — `devflow audit` scans local changes, checks against evidence requirements, and produces a pre-commit risk snapshot.
+- **Enforces a spec-driven workflow** before AI agents write code — no code before requirements, no merge before review.
+- **Runs 25 Definition of Done checks** including integrity consolidation across TypeScript, JavaScript, Python, Go, Rust, PHP, and Java.
+- **Generates structured implementation prompts** for AI agents so they produce traceable, governed output.
+- **Adversarial review across 12 attack vectors** — including bypass attempts, hallucination detection, and architecture boundary violation checks.
+- **Independent gatekeeper review** — implementer cannot be approver (Constitution C12).
+- **Generates PR risk reports** in HTML or markdown format that you can paste into any pull request.
+- **Integrates with CI** via GitHub Actions — gates run automatically on every PR.
+- **Produces auditable evidence** — every decision logged with actor identity, content hashes, git context, and timestamps.
+- **Configurable risk tolerance**: relaxed (solo builder), moderate (team), strict (release).
+
+---
 
 ## What Devflow Does NOT Do
 
 - Does **not** guarantee bug-free code
 - Does **not** replace human code review
 - Does **not** prevent deliberate process bypass
-- Does **not** write code for you — it prepares the ground so code has evidence
-- Does **not** require API keys or SaaS accounts — runs fully local
+- Does **not** write code for you — it prepares the ground so AI-generated code has evidence
+- Does **not** require API keys or SaaS accounts — **runs fully local; no code ever leaves your machine**
+
+---
+
+## How Devflow Compares
+
+| Tool | Cloud Required? | Evidence Enforcement? | Pre-PR Risk Report? | Adversarial Review? |
+|---|---|---|---|---|
+| **Devflow** | No — fully local | Yes | Yes | Yes (12 vectors) |
+| ESLint / Biome | No | No — style only | No | No |
+| CodeRabbit | Yes | No — post-hoc | Partial | No |
+| Cursor Rules | No | No — advisory | No | No |
+| Claude Code alone | No | No — trusts output | No | No |
+| CI-only checks | No | No — green check only | No | No |
+
+Devflow is not a linter. It is not a CI pipeline. It is an **engineering governance framework** that makes AI-generated code auditable, evidence-backed, and ready for human review.
+
+---
 
 ## Quick Start
 
 ```bash
 # Install Devflow in your project (30 seconds)
 npx @tjsasakinpm/devflow install
+
+# Audit AI-generated changes right away
+devflow audit
 
 # Create your first feature
 devflow feature new "my-feature"
@@ -56,14 +99,16 @@ devflow adversarial-review 001-my-feature
 devflow gatekeep 001-my-feature --approve --actor "reviewer"
 
 # Generate PR risk report
-devflow review-pr
+devflow review-pr --format markdown
 ```
 
-[Full demo →](examples/ai-pr-governance-demo/)
+[Full demo ->](examples/ai-pr-governance-demo/)
+
+---
 
 ## Three Setup Paths
 
-### 🧑‍💻 Solo Builder
+### Solo Builder
 
 Working alone? Devflow becomes your second pair of eyes.
 
@@ -74,7 +119,7 @@ devflow config set reviewMode solo-hardened
 
 Self-approval OK. Adversarial review compensates for missing reviewer. Lint and coverage become advisory — still visible, not blocking.
 
-### 👥 Team
+### Team
 
 Standard team setup with role segregation.
 
@@ -82,9 +127,9 @@ Standard team setup with role segregation.
 devflow install --review-mode independent
 ```
 
-Implementer ≠ approver enforced (Constitution C12). Independent gatekeep required before merge.
+Implementer != approver enforced (Constitution C12). Independent gatekeep required before merge.
 
-### 🔒 Strict / Release
+### Strict / Release
 
 CI required. All gates blocking. Full audit trail.
 
@@ -95,12 +140,15 @@ devflow config set riskTolerance strict
 
 Unknown actors blocked. Every check must pass. Implementation log must be complete.
 
+---
+
 ## Commands
 
 ### STABLE — Fully implemented and tested
 
 | Command | Description |
 |---------|-------------|
+| `devflow audit` | Audit AI-generated changes before they reach a PR |
 | `devflow install` | Guided first-run setup |
 | `devflow init` | Initialize Devflow (script-friendly) |
 | `devflow status [--json] [--verbose]` | Show project state, confidence, evidence |
@@ -110,7 +158,7 @@ Unknown actors blocked. Every check must pass. Implementation log must be comple
 | `devflow feature prompt <id> [--copy] [--save]` | Generate AI implementation prompt |
 | `devflow gatekeep <id> --approve\|--reject` | Independent gatekeeper review |
 | `devflow adversarial-review <id>` | Adversarial review — 12 attack vectors |
-| `devflow review-pr [--base <branch>] [--output <file>]` | Generate PR risk report |
+| `devflow review-pr [--base <branch>] [--output <file>] [--format <format>]` | Generate PR risk report |
 | `devflow doctor [--fix]` | Diagnose and fix common issues |
 | `devflow update-cockpit` | Regenerate DEVFLOW.md cockpit |
 | `devflow index` | Map project structure |
@@ -122,6 +170,8 @@ Unknown actors blocked. Every check must pass. Implementation log must be comple
 |---------|-------------|
 | `devflow discover` | Discover and document brownfield project structure |
 | `devflow eval run` | Run evaluation suite |
+
+---
 
 ## Configuration
 
@@ -140,6 +190,12 @@ devflow config set riskTolerance moderate      # Team: standard gates (default)
 devflow config set riskTolerance strict        # Release: all gates blocking, CI mandatory
 ```
 
+The `audit` command supports a `--risk-tolerance` flag to override the project default for a single run:
+
+```bash
+devflow audit --risk-tolerance strict
+```
+
 ### Risk Tolerance Behavior
 
 | Gate | relaxed | moderate | strict |
@@ -148,10 +204,37 @@ devflow config set riskTolerance strict        # Release: all gates blocking, CI
 | Tests | blocking | blocking | blocking |
 | Coverage | advisory | blocking | blocking |
 | Lint | advisory | blocking | blocking |
-| Implementer ≠ approver | advisory | blocking | blocking |
+| Implementer != approver | advisory | blocking | blocking |
 | Adversarial review | blocking | blocking | blocking |
 | CI | ignored | advisory | blocking |
 | Missing artifacts | advisory | advisory | blocking |
+
+---
+
+## GitHub Actions
+
+Devflow runs fully in CI without sending code to the cloud. Example workflow:
+
+```yaml
+name: Devflow PR Governance
+on: [pull_request]
+jobs:
+  governance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npx @tjsasakinpm/devflow init
+      - run: devflow feature complete feature-id
+      - run: devflow adversarial-review feature-id
+      - run: devflow gatekeep feature-id --approve --actor github-actions
+```
+
+---
 
 ## Output Files
 
@@ -166,11 +249,15 @@ devflow config set riskTolerance strict        # Release: all gates blocking, CI
 | `_devflow/discovery/` | Brownfield discovery reports |
 | `DEVFLOW.md` | Project cockpit — auto-generated for AI agents |
 
+---
+
 ## Project States
 
-Devflow tracks 22 states across project detection (5), feature pipeline (15), and anomaly states (2). States progress: `feature-empty` → `feature-requirements` → `feature-design` → `feature-test-plan` → `feature-pre-code-audit` → `feature-coding-ready` → `feature-coding-in-progress` → `feature-verification` → `feature-review` → `feature-done`.
+Devflow tracks 22 states across project detection (5), feature pipeline (15), and anomaly states (2). States progress: `feature-empty` -> `feature-requirements` -> `feature-design` -> `feature-test-plan` -> `feature-pre-code-audit` -> `feature-coding-ready` -> `feature-coding-in-progress` -> `feature-verification` -> `feature-review` -> `feature-done`.
 
 **Key rule:** AI agents must not write code before `feature-coding-ready` state. Devflow blocks premature implementation.
+
+---
 
 ## Installation
 
@@ -182,6 +269,8 @@ npx @tjsasakinpm/devflow init       # Script-friendly (no onboarding)
 
 Requires Node.js >= 18.
 
+---
+
 ## Development
 
 ```bash
@@ -191,6 +280,8 @@ npm install
 npm run build
 npm test
 ```
+
+---
 
 ## Roadmap
 
@@ -208,8 +299,14 @@ Commands planned but not yet built. Use manual alternatives until implemented.
 | `devflow trace` | Read .devflow/ai/runs/ artifacts directly |
 | `devflow promote` | Copy artifacts manually |
 
-Next round: CI/GitHub Actions integration for automated PR checks.
+---
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+> `[!NOTE]`
+> Built for teams who treat AI-generated code with the same rigor as human-written code.
+> Devflow Governed — [docs site](https://github.com/tjsasakifln/devflow) (coming soon).
