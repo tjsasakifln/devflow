@@ -16,6 +16,8 @@ import {
   renderValidationCommands,
   renderRecommendedPrompt,
   renderDontDoNow,
+  renderCurrentInstruction,
+  renderRemainingRisks,
   renderSafetyNotes,
 } from "./sections.js";
 
@@ -30,6 +32,9 @@ export function generateCockpit(
 
     // CRITICAL: first section AI agents read before modifying code
     renderAgentContext(inspection),
+
+    // CRITICAL: tells agent whether it can code RIGHT NOW
+    renderCurrentInstruction(stateResult, inspection),
 
     renderStateSection(
       stateResult.currentState,
@@ -51,6 +56,9 @@ export function generateCockpit(
     renderDontDoNow(stateResult, inspection),
 
     renderSafetyNotes(recommendation),
+
+    // Risks: what's verified, inferred, and unknown
+    renderRemainingRisks(stateResult, inspection),
 
     "## Notes",
     "",

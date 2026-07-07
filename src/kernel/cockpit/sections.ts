@@ -396,6 +396,166 @@ export function renderPendingArtifacts(inspection: ProjectInspection): string {
   return lines.join("\n");
 }
 
+/**
+ * Current instruction for AI agents — the first thing an agent should read.
+ * Tells the agent whether it can code, what commands are allowed, and what's forbidden.
+ */
+export function renderCurrentInstruction(
+  stateResult: { currentState: string },
+  inspection: ProjectInspection,
+): string {
+  const state = stateResult.currentState;
+  const lines = ["## Current Instruction for Agents", ""];
+
+  // Coding-capable states
+  const codingStates = [
+    "feature-coding-ready",
+    "feature-coding-in-progress",
+    "feature-verification",
+    "feature-ci-verified",
+  ];
+
+  const canCode = codingStates.includes(state);
+
+  if (canCode) {
+    lines.push("### ✅ CAN CODE");
+    lines.push("");
+    lines.push("The pre-code artifact pipeline is satisfied. You may implement code.");
+    lines.push("");
+    lines.push("**Allowed commands:**");
+    lines.push("- Read and edit source files in the feature scope");
+    lines.push("- Run validation commands (tests, lint, typecheck)");
+    lines.push("- Update `implementation-log.jsonl` after each action");
+    lines.push("- Mark actions as complete in `actions.md`");
+    lines.push("");
+    lines.push("**Forbidden commands:**");
+    lines.push("- Do NOT modify `.devflow/` files");
+    lines.push("- Do NOT modify `DEVFLOW.md`");
+    lines.push("- Do NOT skip implementation log entries");
+    lines.push("- Do NOT batch multiple actions without logging each one");
+  } else if (state === "feature-done") {
+    lines.push("### ✅ CODE COMPLETE");
+    lines.push("");
+    lines.push("This feature has been approved. No further code changes expected.");
+    lines.push("");
+    lines.push("**Allowed commands:**");
+    lines.push("- Read-only inspection of feature artifacts");
+    lines.push("");
+    lines.push("**Forbidden commands:**");
+    lines.push("- Do NOT modify feature code without creating a new feature workspace");
+    lines.push("- Do NOT delete audit logs");
+  } else if (state === "drift-detected" || state === "blocked") {
+    lines.push("### 🚫 CANNOT CODE — Anomaly State");
+    lines.push("");
+    lines.push(`The system is in anomaly state: **${state}**`);
+    lines.push("Run `devflow doctor` before any other action.");
+    lines.push("");
+    lines.push("**Forbidden commands:**");
+    lines.push("- Do NOT write any code until the anomaly is resolved");
+  } else {
+    lines.push("### 🚫 CANNOT CODE — Pre-Code Phase");
+    lines.push("");
+    lines.push(`Current state: **${state}**`);
+    lines.push("");
+    lines.push("**Required reading before any action:**");
+    if (inspection.activeFeature) {
+      lines.push(`1. \`_devflow/features/${inspection.activeFeature.id}/requirements.md\``);
+      lines.push("2. `DEVFLOW.md` — this file, especially Mandatory Context section");
+    }
+    lines.push("3. `.devflow/constitution.md` — rules C1-C12");
+    lines.push("");
+    lines.push("**Allowed commands:**");
+    lines.push("- Help fill in missing artifact sections (requirements, roadmap, actions, test-plan)");
+    lines.push("- Answer clarification questions about the feature");
+    lines.push("- Run `devflow next --diagnose` to identify missing work");
+    lines.push("- Run `devflow feature prompt <id>` for preview (NOT for implementation)");
+    lines.push("");
+    lines.push("**Forbidden commands:**");
+    lines.push("- Do NOT write any implementation code");
+    lines.push("- Do NOT create files outside `_devflow/features/<id>/`");
+    lines.push("- Do NOT skip artifacts — each exists to prevent wrong code");
+  }
+
+  lines.push("");
+  return lines.join("\n");
+}
+
+/**
+ * Remaining risks — what's verified, inferred, and unknown.
+ * Reduces false confidence in the process ritual.
+ */
+export function renderRemainingRisks(
+  stateResult: { currentState: string; confidence: string },
+  inspection: ProjectInspection,
+): string {
+  const lines = ["## Remaining Risks", ""];
+
+  // Deterministic checks
+  const deterministicVerified: string[] = [];
+  const deterministicNotRun: string[] = [];
+
+  if (inspection.stackProfile) {
+    if (inspection.stackProfile.testCommand) {
+      deterministicVerified.push(`Test framework configured: ${inspection.stackProfile.testFramework}`);
+    } else {
+      deterministicNotRun.push("No test framework detected — tests not verified");
+    }
+    if (inspection.stackProfile.typeCheckCommand) {
+      deterministicVerified.push(`Type checker configured: ${inspection.stackProfile.typeChecker}`);
+    } else if (inspection.stackProfile.language !== "javascript") {
+      deterministicNotRun.push("No type checker — type safety not verified");
+    }
+    if (inspection.stackProfile.lintCommand) {
+      deterministicVerified.push(`Linter configured: ${inspection.stackProfile.linter}`);
+    } else {
+      deterministicNotRun.push("No linter — code style not enforced");
+    }
+  }
+
+  lines.push("### Deterministic Checks");
+  lines.push("");
+  if (deterministicVerified.length > 0) {
+    for (const v of deterministicVerified) {
+      lines.push(`- ✅ ${v}`);
+    }
+  }
+  if (deterministicNotRun.length > 0) {
+    for (const v of deterministicNotRun) {
+      lines.push(`- ⚠️ ${v}`);
+    }
+  }
+  lines.push("");
+
+  // Inferred items
+  lines.push("### Inferred (not verified)");
+  lines.push("");
+  lines.push(`- Project language: **${inspection.stackProfile?.language ?? "unknown"}** (detected from config files, not runtime)`);
+  lines.push(`- Stack tools: inferred from config file presence, not execution`);
+  lines.push(`- State: **${stateResult.currentState}** (confidence: ${stateResult.confidence})`);
+  lines.push("");
+
+  // Human judgment needed
+  lines.push("### Requires Human Judgment");
+  lines.push("");
+  lines.push("- Architecture decisions (roadmap.md correctness)");
+  lines.push("- Requirements completeness (are all edge cases covered?)");
+  lines.push("- Test plan adequacy (does it test the right things?)");
+  lines.push("- Business rule correctness (does the feature do what users need?)");
+  lines.push("- Constitution C12: Independent review (unless solo-hardened mode)");
+  lines.push("");
+
+  // Unknown
+  lines.push("### Unknown");
+  lines.push("");
+  lines.push("- Production behavior under real load");
+  lines.push("- Security vulnerabilities not caught by static analysis");
+  lines.push("- Integration failures with external services");
+  lines.push("- Data migration issues in real environments");
+  lines.push("");
+
+  return lines.join("\n");
+}
+
 export function renderSafetyNotes(
   recommendation: ActionRecommendation
 ): string {
