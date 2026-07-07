@@ -17,3 +17,8 @@ CLAUDE.md
 .claude/
 .agents/
 .playwright-mcp/
+
+# Devflow (local project state — auto-generated, not part of source)
+.devflow/
+_devflow/
+DEVFLOW.md
