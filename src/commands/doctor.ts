@@ -6,6 +6,7 @@ import { detectState } from "../engine/state-detector.js";
 import { computeRecommendation } from "../engine/next-action.js";
 import { generateCockpit } from "../cockpit/generator.js";
 import { fileExists, ensureDir } from "../utils/fs.js";
+import { getVersion } from "../kernel/utils/version.js";
 import { renderRemediation } from "../errors/remediation.js";
 import type { Remediation } from "../errors/remediation.js";
 import pc from "picocolors";
@@ -348,6 +349,170 @@ export async function doctorCommand(
       id: 12, name: "Constitution config", status: "INFO",
       message: "No custom constitution — Devflow uses built-in 12-rule constitution (C1-C12)",
     });
+  }
+
+  // ── 13. CI references .devflow (gitignored) ──
+  {
+    const ciPath = path.join(rootPath, ".github", "workflows", "ci.yml");
+    const gitignorePath = path.join(rootPath, ".gitignore");
+    let devflowIgnored = false;
+    let ciRefsDevflow = false;
+
+    if (await fileExists(gitignorePath)) {
+      try {
+        const { readFile } = await import("node:fs/promises");
+        const gitignoreContent = await readFile(gitignorePath, "utf-8");
+        devflowIgnored = /^\.devflow\/?\s*$/m.test(gitignoreContent);
+      } catch { /* ignore */ }
+    }
+
+    if (await fileExists(ciPath)) {
+      try {
+        const { readFile } = await import("node:fs/promises");
+        const ciContent = await readFile(ciPath, "utf-8");
+        ciRefsDevflow = ciContent.includes(".devflow/");
+      } catch { /* ignore */ }
+    }
+
+    if (devflowIgnored && ciRefsDevflow) {
+      checks.push({
+        id: 13, name: "CI .devflow/ references", status: "FAIL",
+        message: "CI workflow references .devflow/ but it is gitignored — CI won't have these files",
+        remediation: {
+          title: "CI references unversioned files",
+          whyMatters: "CI runs on a clean checkout. Files in .gitignore are not available to CI jobs.",
+          impact: "CI steps referencing .devflow/ will fail with 'file not found' errors.",
+          suggestedFix: "Move CI config references to versioned paths (e.g., src/kernel/artifacts/tool-configs/) or generate them in CI before use.",
+          minimalExample: "Reference src/kernel/artifacts/tool-configs/eslintrc.constitution.json instead of .devflow/eslintrc.constitution.json",
+          severity: "blocking",
+        },
+      });
+    } else if (devflowIgnored && !ciRefsDevflow) {
+      checks.push({ id: 13, name: "CI .devflow/ references", status: "PASS", message: "CI does not reference gitignored .devflow/ paths" });
+    } else {
+      checks.push({ id: 13, name: "CI .devflow/ references", status: "INFO", message: "CI not detected or .devflow/ not gitignored" });
+    }
+  }
+
+  // ── 14. CLI version vs package.json version ──
+  {
+    const cliVersion = getVersion();
+    let pkgVersion = "unknown";
+    if (await fileExists(pkgPath)) {
+      try {
+        const { readFile } = await import("node:fs/promises");
+        const pkgRaw = await readFile(pkgPath, "utf-8");
+        const pkg = JSON.parse(pkgRaw);
+        pkgVersion = pkg.version || "unknown";
+      } catch { /* ignore */ }
+    }
+
+    if (cliVersion === pkgVersion) {
+      checks.push({ id: 14, name: "CLI version sync", status: "PASS", message: `CLI ${cliVersion} matches package.json ${pkgVersion}` });
+    } else {
+      checks.push({
+        id: 14, name: "CLI version sync", status: "FAIL",
+        message: `CLI reports ${cliVersion} but package.json is ${pkgVersion}`,
+        remediation: {
+          title: "Version mismatch",
+          whyMatters: "Audit logs record the CLI version. If it doesn't match package.json, evidence is unreliable.",
+          impact: "Gatekeep and audit logs may report incorrect version, breaking traceability.",
+          suggestedFix: "Ensure getVersion() reads from the correct package.json and that all hardcoded versions are removed.",
+          minimalExample: "Check src/kernel/utils/version.ts path resolution and rebuild.",
+          severity: "blocking",
+        },
+      });
+    }
+  }
+
+  // ── 15. CI tools in devDependencies ──
+  {
+    const ciPath = path.join(rootPath, ".github", "workflows", "ci.yml");
+    if (await fileExists(ciPath) && await fileExists(pkgPath)) {
+      try {
+        const { readFile } = await import("node:fs/promises");
+        const ciContent = await readFile(ciPath, "utf-8");
+        const pkgRaw = await readFile(pkgPath, "utf-8");
+        const pkg = JSON.parse(pkgRaw);
+        const devDeps = Object.keys(pkg.devDependencies || {});
+        const deps = Object.keys(pkg.dependencies || {});
+
+        // Extract npx tool names from CI steps
+        const npxMatches = ciContent.matchAll(/npx\s+(\S+)/g);
+        const ciTools = new Set<string>();
+        for (const m of npxMatches) {
+          const tool = (m[1] ?? "").split(" ")[0] ?? "";
+          if (tool) ciTools.add(tool);
+        }
+
+        const missingTools: string[] = [];
+        for (const tool of ciTools) {
+          // Skip tools that are always available (tsc, vitest when in devDeps)
+          const pkgName = tool.startsWith("@") ? tool.split("/").slice(0, 2).join("/") : tool;
+          if (!devDeps.includes(pkgName) && !deps.includes(pkgName) && tool !== "echo" && tool !== "node") {
+            missingTools.push(tool);
+          }
+        }
+
+        if (missingTools.length > 0) {
+          checks.push({
+            id: 15, name: "CI tool availability", status: "FAIL",
+            message: `CI uses tools not in devDependencies: ${missingTools.join(", ")}`,
+            remediation: {
+              title: "CI tools missing from package.json",
+              whyMatters: "npm ci installs only what's in package.json. Missing tools cause CI failures.",
+              impact: `CI steps using ${missingTools.join(", ")} will fail unless these tools are installed separately.`,
+              suggestedFix: `Add missing tools to devDependencies: npm install --save-dev ${missingTools.join(" ")}`,
+              minimalExample: `npm install --save-dev ${missingTools.join(" ")}`,
+              severity: "blocking",
+            },
+          });
+        } else {
+          checks.push({ id: 15, name: "CI tool availability", status: "PASS", message: "All CI tools are in devDependencies" });
+        }
+      } catch {
+        checks.push({ id: 15, name: "CI tool availability", status: "INFO", message: "Cannot parse CI config or package.json" });
+      }
+    } else {
+      checks.push({ id: 15, name: "CI tool availability", status: "INFO", message: "No CI workflow or package.json to check" });
+    }
+  }
+
+  // ── 16. .devflow gitignored but project uses Devflow (self-check) ──
+  {
+    const gitignorePath = path.join(rootPath, ".gitignore");
+    let devflowIgnored = false;
+    if (await fileExists(gitignorePath)) {
+      try {
+        const { readFile } = await import("node:fs/promises");
+        const gitignoreContent = await readFile(gitignorePath, "utf-8");
+        devflowIgnored = /^\.devflow\/?\s*$/m.test(gitignoreContent);
+      } catch { /* ignore */ }
+    }
+
+    const isDevflowProject = await fileExists(path.join(rootPath, ".devflow", "config.json"));
+
+    if (devflowIgnored && isDevflowProject) {
+      checks.push({
+        id: 16, name: ".devflow/ gitignore awareness", status: "INFO",
+        message: ".devflow/ is gitignored (expected) — local state, not versioned. CI must not depend on it.",
+      });
+    } else if (!devflowIgnored && isDevflowProject) {
+      checks.push({
+        id: 16, name: ".devflow/ gitignore awareness", status: "INFO",
+        message: ".devflow/ is NOT gitignored — consider adding it to .gitignore (local state only)",
+        remediation: {
+          title: ".devflow/ should be gitignored",
+          whyMatters: ".devflow/ contains local project state that varies per machine. Versioning it causes conflicts.",
+          impact: "Different developers may have conflicting state.json, config.json, or audit files.",
+          suggestedFix: "Add .devflow/ to .gitignore",
+          minimalExample: "echo '.devflow/' >> .gitignore",
+          severity: "advisory",
+        },
+      });
+    } else {
+      checks.push({ id: 16, name: ".devflow/ gitignore awareness", status: "INFO", message: "Devflow not initialized in this project" });
+    }
   }
 
   // ── Print results ──
