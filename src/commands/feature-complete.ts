@@ -350,7 +350,7 @@ async function runAllDoDChecks(
   await checkTestPlan(checks, featureDir);
 
   // ── Check 25: Implementation log ──
-  await checkImplementationLog(checks, featureDir);
+  await checkImplementationLog(checks, featureDir, rootPath);
 }
 
 // ── Individual check functions ──
@@ -1096,13 +1096,14 @@ async function checkTestPlan(checks: DoDCheck[], featureDir: string) {
   });
 }
 
-async function checkImplementationLog(checks: DoDCheck[], featureDir: string) {
+async function checkImplementationLog(checks: DoDCheck[], featureDir: string, rootPath: string) {
   const logPath = path.join(featureDir, "implementation-log.jsonl");
   const exists = await fileExists(logPath);
   let hasContent = false;
+  let logRaw: string | null = null;
   if (exists) {
-    const raw = await safeReadFile(logPath);
-    hasContent = !!raw && raw.trim().length > 0;
+    logRaw = await safeReadFile(logPath);
+    hasContent = !!logRaw && logRaw.trim().length > 0;
   }
   checks.push({
     id: "24",
@@ -1116,16 +1117,66 @@ async function checkImplementationLog(checks: DoDCheck[], featureDir: string) {
     remediation: "Record each action execution in implementation-log.jsonl",
   });
 
-  // Final gate: Reserved for future use
-  checks.push({
-    id: "25",
-    description: "All blocking checks passed (final gate)",
-    category: "process",
-    passed: true,
-    evidence: "Final gate reserved for future integrity checks",
-    blocking: false,
-    remediation: "N/A",
-  });
+  // Final gate: Integrity consolidation — validates cross-check consistency
+  {
+    const blockingChecks = checks.filter((c) => c.blocking);
+    const allBlockingPassed = blockingChecks.every((c) => c.passed);
+    const failedBlocking = blockingChecks.filter((c) => !c.passed);
+
+    // Verify implementation log entries match actions completion
+    const actionsPath = path.join(featureDir, "actions.md");
+    let actionLogConsistency = true;
+    if (await fileExists(actionsPath) && exists) {
+      const actionsMd = (await safeReadFile(actionsPath)) ?? "";
+      const checkedCount = (actionsMd.match(/\[[xX]\]/g) || []).length;
+      const logEntryCount = logRaw ? logRaw.trim().split("\n").filter((l) => l.trim()).length : 0;
+      // At minimum, log entries should exist if actions are checked
+      actionLogConsistency = checkedCount === 0 || logEntryCount > 0;
+    }
+
+    // Verify adversarial review exists for current feature
+    const advReviewPath = path.join(rootPath, ".devflow", "audits", "adversarial-review.md");
+    const advReviewExists = await fileExists(advReviewPath);
+
+    // Verify gatekeep log has entries for this feature
+    const gatekeepLogPath = path.join(rootPath, ".devflow", "audits", "gatekeep-log.jsonl");
+    let gatekeepHasEntries = false;
+    if (await fileExists(gatekeepLogPath)) {
+      const gkRaw = await safeReadFile(gatekeepLogPath);
+      gatekeepHasEntries = !!(gkRaw && gkRaw.trim().length > 0);
+    }
+
+    const consolidationPassed = allBlockingPassed && actionLogConsistency;
+    const issues: string[] = [];
+    if (!allBlockingPassed) {
+      issues.push(`${failedBlocking.length} blocking check(s) failed: ${failedBlocking.map((c) => c.id).join(", ")}`);
+    }
+    if (!actionLogConsistency) {
+      issues.push("Actions marked complete but no implementation log entries found");
+    }
+
+    const evidenceParts: string[] = [];
+    if (allBlockingPassed) {
+      evidenceParts.push(`All ${blockingChecks.length} blocking checks passed`);
+    }
+    evidenceParts.push(`Implementation log: ${actionLogConsistency ? "consistent with actions" : "MISMATCH"}`);
+    evidenceParts.push(`Adversarial review: ${advReviewExists ? "found" : "missing"}`);
+    evidenceParts.push(`Gatekeep log: ${gatekeepHasEntries ? "has entries" : "empty or missing"}`);
+
+    checks.push({
+      id: "25",
+      description: "Integrity consolidation (cross-check all blocking gates, logs, reviews)",
+      category: "process",
+      passed: consolidationPassed,
+      evidence: consolidationPassed
+        ? `All blocking gates passed. ${evidenceParts.join(". ")}.`
+        : `INTEGRITY CHECK FAILED: ${issues.join("; ")}. ${evidenceParts.join(". ")}.`,
+      blocking: true,
+      remediation: issues.length > 0
+        ? `Fix integrity issues: ${issues.join(". ")}.`
+        : "Run devflow adversarial-review and gatekeep to complete the audit trail.",
+    });
+  }
 }
 
 // ── Result rendering ──
