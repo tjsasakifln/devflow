@@ -1,0 +1,24 @@
+#!/bin/sh
+# Devflow pre-commit hook — installed by `devflow install`
+# Prevents commits on main/master and blocks commits when DEVFLOW.md
+# indicates CANNOT CODE.
+
+BRANCH=$(git branch --show-current 2>/dev/null)
+
+if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
+  echo "⛔ Devflow: Direct commits to '$BRANCH' are blocked."
+  echo "   Use a feature branch: git checkout -b feature/<name>"
+  exit 1
+fi
+
+# Check if DEVFLOW.md says CANNOT CODE
+if [ -f DEVFLOW.md ]; then
+  if grep -q "CANNOT CODE" DEVFLOW.md 2>/dev/null; then
+    echo "⚠️  Devflow: DEVFLOW.md indicates CANNOT CODE."
+    echo "   Complete pre-code artifacts before committing."
+    echo "   Run: devflow next --diagnose"
+    exit 1
+  fi
+fi
+
+exit 0

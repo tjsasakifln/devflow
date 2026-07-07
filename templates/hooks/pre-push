@@ -1,0 +1,27 @@
+#!/bin/sh
+# Devflow pre-push hook — installed by `devflow install`
+# Warns if feature completion checks haven't been run before pushing.
+
+BRANCH=$(git branch --show-current 2>/dev/null)
+
+# Only check feature branches
+case "$BRANCH" in
+  feature/*|fix/*|feat/*) ;;
+  *) exit 0 ;;
+esac
+
+# Extract feature ID from branch name
+FEATURE_ID=$(echo "$BRANCH" | sed 's|.*/||')
+
+if [ -f "_devflow/features/$FEATURE_ID/implementation-log.jsonl" ]; then
+  # Check if DoD summary exists
+  if [ ! -f ".devflow/audits/dod-summary.md" ] && [ ! -f ".devflow/audits/$FEATURE_ID/dod-summary.md" ]; then
+    echo "⚠️  Devflow: No DoD summary found for feature '$FEATURE_ID'."
+    echo "   Run: devflow feature complete $FEATURE_ID"
+    echo "   Run: devflow gatekeep $FEATURE_ID --approve --actor <reviewer>"
+    echo ""
+    echo "   To bypass this check: git push --no-verify"
+  fi
+fi
+
+exit 0

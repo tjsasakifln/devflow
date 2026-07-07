@@ -8,6 +8,9 @@
  */
 
 import { execSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { initCommand } from "./init.js";
 import { updateCockpitCommand } from "./update-cockpit.js";
 import { doctorCommand } from "./doctor.js";
@@ -156,6 +159,9 @@ export async function installCommand(
   // ── Regenerate cockpit ──
   await updateCockpitCommand(cwd);
 
+  // ── Git hooks (opt-in) ──
+  await installGitHooks(cwd, options);
+
   // ── Onboarding ──
   console.log(pc.green("\n✅ Devflow installed successfully!\n"));
   console.log(pc.bold("What's next:\n"));
@@ -190,4 +196,94 @@ export async function installCommand(
   console.log();
   console.log(pc.dim("For help: devflow --help"));
   console.log(pc.dim("For health: devflow doctor\n"));
+}
+
+/**
+ * Install git hooks (opt-in). Copies hook templates to .git/hooks/
+ * and sets hooksEnabled: true in Devflow config.
+ */
+async function installGitHooks(
+  _cwd: string,
+  options: InstallOptions,
+): Promise<void> {
+  // Skip in dry-run or non-interactive mode (user didn't explicitly opt in)
+  if (options.dryRun || options.nonInteractive) return;
+
+  // Locate hook templates relative to this source file
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const templatesDir = path.resolve(__dirname, "..", "..", "templates", "hooks");
+  const gitDir = path.join(_cwd, ".git");
+
+  if (!fs.existsSync(gitDir)) {
+    console.log(pc.dim("\n→ Git repository not found — skipping hook installation.\n"));
+    return;
+  }
+
+  if (!fs.existsSync(templatesDir)) {
+    // Templates not available (e.g., running from dist/ without templates/)
+    console.log(pc.dim("\n→ Hook templates not found — skipping hook installation.\n"));
+    console.log(pc.dim("  Templates are included with the npm package. Reinstall if needed.\n"));
+    return;
+  }
+
+  const hooksDir = path.join(gitDir, "hooks");
+  if (!fs.existsSync(hooksDir)) {
+    fs.mkdirSync(hooksDir, { recursive: true });
+  }
+
+  // Check if hooks already installed
+  const preCommitPath = path.join(hooksDir, "pre-commit");
+  const prePushPath = path.join(hooksDir, "pre-push");
+  const alreadyInstalled = fs.existsSync(preCommitPath) || fs.existsSync(prePushPath);
+
+  if (alreadyInstalled && options.yes) {
+    console.log(pc.dim("\nGit hooks already installed.\n"));
+    return;
+  }
+
+  // In non-interactive mode with --yes, auto-install
+  const shouldInstall = options.yes || alreadyInstalled;
+
+  if (!shouldInstall) {
+    console.log(pc.yellow("\n→ Git hooks (optional) — enforce Devflow gates automatically:\n"));
+    console.log(pc.dim("  pre-commit: Block commits to main/master, block when CANNOT CODE"));
+    console.log(pc.dim("  pre-push:   Warn if DoD checks not run before pushing feature branch\n"));
+    console.log(pc.dim("  To install later, run: npx @tjsasakinpm/devflow install\n"));
+    console.log(pc.dim("  Hooks can be bypassed with: git commit --no-verify / git push --no-verify\n"));
+    return;
+  }
+
+  try {
+    const preCommitSrc = path.join(templatesDir, "pre-commit");
+    const prePushSrc = path.join(templatesDir, "pre-push");
+
+    if (fs.existsSync(preCommitSrc)) {
+      fs.copyFileSync(preCommitSrc, preCommitPath);
+      fs.chmodSync(preCommitPath, 0o755);
+      console.log(pc.green(`  ✓ pre-commit hook installed`));
+    }
+
+    if (fs.existsSync(prePushSrc)) {
+      fs.copyFileSync(prePushSrc, prePushPath);
+      fs.chmodSync(prePushPath, 0o755);
+      console.log(pc.green(`  ✓ pre-push hook installed`));
+    }
+
+    // Update config
+    try {
+      const { ConfigManager } = await import("../kernel/config/index.js");
+      const mgr = new ConfigManager(_cwd);
+      const config = await mgr.load();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (config as any).hooksEnabled = true;
+      await mgr.save(config);
+    } catch { /* config update is best-effort */ }
+
+    console.log(pc.green("\n✅ Git hooks installed. Devflow gates will run automatically.\n"));
+    console.log(pc.dim("   Hooks are optional and can be removed: rm .git/hooks/pre-commit .git/hooks/pre-push"));
+    console.log(pc.dim("   Bypass when needed: git commit --no-verify / git push --no-verify\n"));
+  } catch (err) {
+    console.log(pc.yellow(`\n⚠️  Could not install git hooks: ${err instanceof Error ? err.message : err}\n`));
+  }
 }

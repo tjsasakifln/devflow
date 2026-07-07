@@ -12,7 +12,8 @@
     "dist/",
     "templates/",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "CLAUDE.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
