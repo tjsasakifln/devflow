@@ -10,6 +10,7 @@ import {
 import { runConstitutionCheck } from "../constitution/checker.js";
 import { loadConstitution } from "../constitution/loader.js";
 import { ConfigManager } from "../config/index.js";
+import { detectStackProfile, type StackProfile } from "../detection/stack.js";
 
 export interface PipelineContext {
   feature: FeatureInfo;
@@ -237,87 +238,157 @@ export async function checkPipelineReadiness(
     ));
   }
 
-  // ── Gate 12: Typecheck passes (deterministic) ──
+  // ── Stack-adaptive tool detection (shared by gates 12 & 13) ──
+  const stack: StackProfile = await detectStackProfile(rootPath);
+
+  // Read package.json scripts for overrides
+  let pkgScripts: Record<string, string> = {};
+  try {
+    const pkgRaw = await safeReadFile(path.join(rootPath, "package.json"));
+    if (pkgRaw) {
+      const pkg = JSON.parse(pkgRaw);
+      pkgScripts = pkg.scripts ?? {};
+    }
+  } catch {
+    // No package.json or invalid JSON
+  }
+
+  const pm = stack.packageManager ?? "npm";
+  const pmRun = pm === "yarn" ? "yarn" : pm === "pnpm" ? "pnpm" : "npm run";
+
+  // ── Gate 12: Typecheck (stack-adaptive) ──
   if (detGates.typecheck) {
-    try {
-      execSync("npx tsc --noEmit", {
-        cwd: rootPath,
-        encoding: "utf-8",
-        timeout: 60000,
-        env: { ...process.env, CI: "true" },
-      });
+    const typeCheckCmd = pkgScripts.typecheck
+      ? `${pmRun} typecheck`
+      : stack.typeCheckCommand;
+
+    if (typeCheckCmd) {
+      try {
+        execSync(typeCheckCmd, {
+          cwd: rootPath,
+          encoding: "utf-8",
+          timeout: 60000,
+          env: { ...process.env, CI: "true" },
+        });
+        checks.push(makeCheck(
+          "typecheck-passing",
+          `Type checking passes (${typeCheckCmd})`,
+          true,
+          `Type checking successful — no errors (${stack.language})`,
+          12,
+          stack.language !== "javascript",
+          `Run \`${typeCheckCmd}\` to see detailed errors`,
+        ));
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message.slice(0, 300) : String(err);
+        checks.push(makeCheck(
+          "typecheck-passing",
+          `Type checking passes (${typeCheckCmd})`,
+          false,
+          `Type errors found:\n${errMsg}`,
+          12,
+          stack.language !== "javascript",
+          `Fix type errors: run \`${typeCheckCmd}\` and resolve all reported issues`,
+        ));
+      }
+    } else if (stack.language === "javascript") {
       checks.push(makeCheck(
         "typecheck-passing",
-        "TypeScript type checking passes (tsc --noEmit)",
+        "Type checking (JavaScript project — optional)",
         true,
-        "TypeScript compilation successful — no type errors",
+        "JavaScript project — type checking not required. Consider TypeScript or JSDoc.",
         12,
-        true,
-        "Run `npx tsc --noEmit` to see detailed type errors",
-      ));
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message.slice(0, 300) : String(err);
-      checks.push(makeCheck(
-        "typecheck-passing",
-        "TypeScript type checking passes (tsc --noEmit)",
         false,
-        `Type errors found:\n${errMsg}`,
-        12,
+        "Add TypeScript to the project for type safety: npm install --save-dev typescript",
+      ));
+    } else if (stack.language === "go" || stack.language === "rust") {
+      checks.push(makeCheck(
+        "typecheck-passing",
+        `Type checking (${stack.language} — built into compiler)`,
         true,
-        "Fix type errors: run `npx tsc --noEmit` and resolve all reported issues",
+        `${stack.language} compiler handles type checking natively.`,
+        12,
+        false,
+        `Run ${stack.testCommand ?? "build"} to verify compilation.`,
+      ));
+    } else {
+      checks.push(makeCheck(
+        "typecheck-passing",
+        `Type checking (${stack.language} — not configured)`,
+        true,
+        `⚠️  No type checker configured for ${stack.language}. Add a "typecheck" script to package.json or configure deterministicGates.`,
+        12,
+        false,
+        'Add "typecheck" script to package.json (e.g., "tsc --noEmit") or configure typeCheckCommand in .devflow/config.json',
       ));
     }
   } else {
     checks.push(makeCheck(
       "typecheck-passing",
-      "TypeScript type checking passes (tsc --noEmit)",
+      "Type checking (gate disabled in config)",
       true,
       "Typecheck gate disabled in config",
       12,
       false,
-      "Enable typecheck gate in .devflow/config.json: deterministicGates.typecheck",
+      "Enable typecheck gate: deterministicGates.typecheck = true in .devflow/config.json",
     ));
   }
 
-  // ── Gate 13: Lint passes (deterministic) ──
+  // ── Gate 13: Lint (stack-adaptive) ──
   if (detGates.lint) {
-    try {
-      execSync("npx eslint src/ --max-warnings 0 --config .devflow/eslintrc.constitution.json 2>&1", {
-        cwd: rootPath,
-        encoding: "utf-8",
-        timeout: 60000,
-        env: { ...process.env, CI: "true" },
-      });
+    const lintCmd = pkgScripts.lint
+      ? `${pmRun} lint`
+      : stack.lintCommand;
+
+    if (lintCmd) {
+      try {
+        execSync(lintCmd, {
+          cwd: rootPath,
+          encoding: "utf-8",
+          timeout: 60000,
+          env: { ...process.env, CI: "true" },
+        });
+        checks.push(makeCheck(
+          "lint-passing",
+          `Lint passes (${lintCmd})`,
+          true,
+          `All lint rules pass — no violations (${stack.linter ?? stack.language})`,
+          13,
+          true,
+          `Run \`${lintCmd}\` to see violations`,
+        ));
+      } catch (err) {
+        const errMsg = err instanceof Error ? (err.message).slice(0, 300) : String(err);
+        checks.push(makeCheck(
+          "lint-passing",
+          `Lint passes (${lintCmd})`,
+          false,
+          `Lint violations found:\n${errMsg}`,
+          13,
+          true,
+          `Fix lint violations: run \`${lintCmd}\` and resolve remaining issues`,
+        ));
+      }
+    } else {
       checks.push(makeCheck(
         "lint-passing",
-        "ESLint passes with constitution rules",
+        `Lint (${stack.language} — not configured)`,
         true,
-        "All lint rules pass — no violations",
+        `⚠️  No linter configured for ${stack.language}. Add a "lint" script to package.json or configure deterministicGates.`,
         13,
-        true,
-        "Run `npx eslint src/ --config .devflow/eslintrc.constitution.json` to see violations",
-      ));
-    } catch (err) {
-      const errMsg = err instanceof Error ? (err.message).slice(0, 300) : String(err);
-      checks.push(makeCheck(
-        "lint-passing",
-        "ESLint passes with constitution rules",
         false,
-        `Lint violations found:\n${errMsg}`,
-        13,
-        true,
-        "Fix lint violations: run `npx eslint src/ --fix` and resolve remaining issues",
+        'Add "lint" script to package.json (e.g., "eslint src/") or configure lintCommand in .devflow/config.json',
       ));
     }
   } else {
     checks.push(makeCheck(
       "lint-passing",
-      "ESLint passes with constitution rules",
+      "Lint (gate disabled in config)",
       true,
       "Lint gate disabled in config",
       13,
       false,
-      "Enable lint gate in .devflow/config.json: deterministicGates.lint",
+      "Enable lint gate: deterministicGates.lint = true in .devflow/config.json",
     ));
   }
 
