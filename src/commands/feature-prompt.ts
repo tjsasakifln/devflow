@@ -461,7 +461,7 @@ function buildPrompt(ctx: PromptContext): string {
   lines.push("1. **Action-by-action:** Implement ONE action at a time. Do not batch.");
   lines.push("2. **Log every action:** After each action, append to `implementation-log.jsonl`:");
   lines.push("   ```json");
-  lines.push('   {"timestamp":"<ISO>","actionId":"T001","action":"<summary>","filesChanged":["a.ts","b.ts"],"status":"completed","notes":"<test output / evidence>"}');
+  lines.push('   {"timestamp":"<ISO>","actor":"<agent-or-person-name>","actionId":"T001","action":"<summary>","filesChanged":["a.ts","b.ts"],"status":"completed","notes":"<test output / evidence>"}');
   lines.push("   ```");
   lines.push("3. **Test after each action:** Run the stack validation commands. Red tests = stop and fix.");
   lines.push("4. **Never skip tests:** Every action must have test evidence.");
