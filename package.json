@@ -1,6 +1,6 @@
 {
   "name": "@devflow/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "fool-resistant, evidence-driven, engineered-by-default: state-aware workflow harness for AI-assisted software development",
   "type": "module",
   "main": "./dist/main.js",
@@ -22,7 +22,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "clean": "rimraf dist/"
+    "clean": "rimraf dist/",
+    "prepack": "npm run build"
   },
   "keywords": [
     "devflow",
@@ -31,13 +32,23 @@
     "brownfield",
     "reverse-engineering",
     "specification",
-    "orchestration"
+    "orchestration",
+    "engineering-governance",
+    "definition-of-done",
+    "adversarial-review",
+    "claude-code",
+    "cursor",
+    "spec-driven-development"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/devflow/devflow"
+    "url": "https://github.com/tjsasakifln/devflow"
   },
+  "bugs": {
+    "url": "https://github.com/tjsasakifln/devflow/issues"
+  },
+  "homepage": "https://github.com/tjsasakifln/devflow#readme",
   "engines": {
     "node": ">=18.0.0"
   },
