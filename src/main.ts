@@ -2,6 +2,7 @@
 
 import { Command } from "commander";
 import { registerCommands } from "./commands/index.js";
+import { getVersion } from "./kernel/utils/version.js";
 import pc from "picocolors";
 
 const program = new Command();
@@ -11,7 +12,7 @@ program
   .description(
     "fool-resistant, evidence-driven, engineered-by-default: state-aware workflow harness for AI-assisted software development"
   )
-  .version("0.1.0")
+  .version(getVersion())
   .option("--cwd <path>", "Working directory", process.cwd())
   .option("--mode <mode>", "Execution mode: local, experimental, strict, release", "local")
   .option("--verbose", "Verbose output")

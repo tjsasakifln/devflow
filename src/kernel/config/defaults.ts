@@ -1,7 +1,8 @@
 import type { DevflowConfig } from "../types/artifacts.js";
+import { getVersion } from "../utils/version.js";
 
 export const DEFAULTS: DevflowConfig = {
-  version: "0.1.0",
+  version: getVersion(),
   projectName: "unknown",
   createdTimestamp: new Date().toISOString(),
   modifiedTimestamp: new Date().toISOString(),

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { fileExists, safeReadFile, atomicWrite } from "../utils/fs.js";
+import { getVersion } from "../kernel/utils/version.js";
 import pc from "picocolors";
 
 export async function gatekeep(
@@ -159,7 +160,7 @@ export async function gatekeep(
       actorOrigin,
       commitSha,
       branch: gitBranch,
-      devflowVersion: "0.1.0",
+      devflowVersion: getVersion(),
       executionMode: mode,
     };
     const gatekeepLogPath = path.join(auditDir, "gatekeep-log.jsonl");
@@ -194,7 +195,7 @@ export async function gatekeep(
     actorOrigin,
     commitSha,
     branch: gitBranch,
-    devflowVersion: "0.1.0",
+    devflowVersion: getVersion(),
     executionMode: mode,
     reviewMode,
     allBlockingPassed: dodResult.allBlockingPassed,
