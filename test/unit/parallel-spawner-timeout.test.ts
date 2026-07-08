@@ -181,8 +181,12 @@ describe("ParallelSpawner Timeout Behavior", () => {
       timeoutPerAgent: 100,
     });
 
+    // Advance time past both the fast agent's completion (20ms) and slow agent's timeout (100ms).
+    // Use runAllTimersAsync to ensure all pending timers (including setImmediate-based
+    // close events in the mock) are exhausted before inspecting results.
     await vi.advanceTimersByTimeAsync(50);
     await vi.advanceTimersByTimeAsync(200);
+    await vi.runAllTimersAsync();
     const result = await spawnPromise;
     vi.useRealTimers();
 
