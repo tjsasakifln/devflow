@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock @clack/prompts
 vi.mock("@clack/prompts", () => ({
@@ -12,8 +12,21 @@ vi.mock("@clack/prompts", () => ({
   isCancel: vi.fn(),
 }));
 
+let savedEnv: { CI?: string; DEVFLOW_NON_INTERACTIVE?: string } = {};
+
 beforeEach(() => {
   vi.resetModules();
+  savedEnv.CI = process.env.CI;
+  savedEnv.DEVFLOW_NON_INTERACTIVE = process.env.DEVFLOW_NON_INTERACTIVE;
+  delete process.env.CI;
+  delete process.env.DEVFLOW_NON_INTERACTIVE;
+});
+
+afterEach(() => {
+  if (savedEnv.CI !== undefined) process.env.CI = savedEnv.CI;
+  else delete process.env.CI;
+  if (savedEnv.DEVFLOW_NON_INTERACTIVE !== undefined) process.env.DEVFLOW_NON_INTERACTIVE = savedEnv.DEVFLOW_NON_INTERACTIVE;
+  else delete process.env.DEVFLOW_NON_INTERACTIVE;
 });
 
 describe("isInteractive", () => {
