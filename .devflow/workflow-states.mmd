@@ -1,0 +1,108 @@
+stateDiagram-v2
+  direction LR
+
+  %% ── GREENFIELD WORKFLOW ──
+  no-project --> greenfield-idea      : t001: Create Project Idea
+  no-project --> brownfield-unknown   : t002: Detect Existing Codebase
+
+  greenfield-idea --> greenfield-specified : t003: Write Specs
+  greenfield-idea --> feature-empty       : t004: Skip Specs → Create Feature
+
+  greenfield-specified --> feature-empty : t005: Create First Feature
+
+  %% ── BROWNFIELD WORKFLOW ──
+  brownfield-unknown --> brownfield-discovered : t006: Install Devflow
+  brownfield-unknown --> feature-empty          : t007: Skip Discovery
+  brownfield-unknown --> discovery-scout        : t011: Start Deep Discovery
+
+  brownfield-discovered --> brownfield-specified : t008: Write Discovery Specs
+  brownfield-discovered --> feature-empty        : t009: Skip Discovery Specs
+
+  brownfield-specified --> feature-empty : t010: Create Feature (Brownfield)
+
+  %% ── DEEP DISCOVERY CHAIN ──
+  discovery-scout --> discovery-archaeologist : t012: Deep Archaeology
+  discovery-scout --> feature-empty            : t017: Abort → Start Feature
+
+  discovery-archaeologist --> discovery-detective : t013: Behavioral Analysis
+  discovery-archaeologist --> feature-empty       : t018: Abort → Start Feature
+
+  discovery-detective --> discovery-architect : t014: Architecture Reconstruction
+  discovery-detective --> feature-empty        : t019: Abort → Start Feature
+
+  discovery-architect --> discovery-writer  : t015: Consolidate Findings
+  discovery-architect --> feature-empty      : t020: Skip → Start Feature
+
+  discovery-writer --> brownfield-specified : t016: Discovery Complete
+
+  %% ── FEATURE PIPELINE (shared) ──
+  feature-empty --> feature-requirements : t021: Write Requirements
+
+  feature-requirements --> feature-clarification-needed : t022: Flag [DOUBT]
+  feature-requirements --> feature-design                : t023: Approve → Design
+
+  feature-clarification-needed --> feature-requirements : t024: Return Clarified
+  feature-clarification-needed --> feature-design        : t025: Skip to Design
+
+  feature-design --> feature-design-reviewed : t026: Submit for Design Review
+
+  feature-design-reviewed --> feature-test-plan : t027: Create Test Plan
+
+  feature-test-plan --> feature-test-plan-ready : t028: Review Test Plan
+
+  feature-test-plan-ready --> feature-pre-code-audit : t029: Run Pre-Code Audit
+
+  feature-pre-code-audit --> feature-coding-ready : t030: Audit PASS
+  feature-pre-code-audit --> feature-empty         : t031: Audit FAIL → Restart
+
+  feature-coding-ready --> feature-coding-in-progress : t032: Start Coding
+
+  %% ── IMPLEMENTATION ──
+  feature-coding-in-progress --> feature-verification    : t033: Coding Complete
+  feature-coding-in-progress --> drift-detected          : t034: Code-Spec Drift
+  feature-coding-in-progress --> blocked                 : t035: Blocker Hit
+  feature-coding-in-progress --> bugfix-detected         : t210: Bug Found
+
+  %% ── VERIFICATION ──
+  feature-verification --> feature-ci-verified         : t036: CI Passes
+  feature-verification --> feature-review               : t037: Submit for Review
+  feature-verification --> feature-coding-in-progress   : t038: Checks FAIL
+
+  feature-ci-verified --> feature-review : t039: CI Confirmed
+
+  %% ── QA LOOP ──
+  feature-review --> feature-done                 : t040: QA PASS → Approve
+  feature-review --> feature-adversarial-review   : t041: Escalate Adversarial
+  feature-review --> feature-coding-in-progress   : t042: QA FAIL → Fix
+  feature-review --> bugfix-detected              : t211: Bug Found in Review
+
+  feature-adversarial-review --> feature-done               : t043: Adversarial PASS
+  feature-adversarial-review --> feature-coding-in-progress : t044: Adversarial FAIL
+
+  %% ── ANOMALY STATES ──
+  drift-detected --> blocked                  : t045: Unresolvable → Blocker
+  drift-detected --> feature-empty            : t046: Restart Feature
+  drift-detected --> feature-verification     : t047: Reconciled → Re-Verify
+
+  blocked --> feature-empty                 : t048: Abort Feature
+  blocked --> feature-coding-in-progress     : t049: Resolved → Resume
+  blocked --> feature-done                   : t050: Resolved + Complete
+
+  %% ── COMPLETION CYCLE ──
+  feature-done --> feature-empty        : t051: Start Next Feature
+  feature-done --> drift-detected       : t052: Post-Completion Drift
+  feature-done --> bugfix-detected      : t212: Regression Bug Found
+
+  %% ── BUGFIX WORKFLOW ──
+  bugfix-detected --> bugfix-implementing : t201: Start Fix
+  bugfix-detected --> bugfix-done         : t202: Won't Fix
+  bugfix-detected --> feature-empty       : t209: Escalate to Feature
+
+  bugfix-implementing --> bugfix-verifying : t203: Fix Applied → Verify
+  bugfix-implementing --> blocked          : t204: Fix Blocked
+
+  bugfix-verifying --> bugfix-done         : t205: Fix PASS
+  bugfix-verifying --> bugfix-implementing : t206: Fix FAIL → Rework
+
+  bugfix-done --> feature-empty       : t207: Next Task
+  bugfix-done --> drift-detected      : t208: Bugfix Drift

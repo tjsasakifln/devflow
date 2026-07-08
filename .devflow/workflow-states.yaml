@@ -1,0 +1,1815 @@
+# =============================================================================
+# Devflow Workflow State Machine — DSL v1.0
+# =============================================================================
+# Covers all 4 workflow types:
+#   1. GREENFIELD — Project from scratch (no-project → feature-done)
+#   2. BROWNFIELD — Existing codebase (discovery → feature pipeline)
+#   3. BUGFIX    — Simplified shortcut workflow
+#   4. QA LOOP   — Review gates with pass/fail transitions
+#
+# Source of existing states:  src/kernel/types/state.ts  (23 active + 3 legacy)
+# Source of transitions:      src/kernel/state/transitions.ts
+# Source of detection logic:  src/kernel/state/detector.ts
+# Pattern: LangGraph StateGraph (nodes + edges + conditional edges)
+# =============================================================================
+
+version: "1.0"
+meta:
+  title: "Devflow Universal Workflow State Machine"
+  description: |
+    Unified state machine DSL that covers all 4 Devflow workflow types.
+    Each transition defines guard conditions (when the transition may fire),
+    effects (side effects that execute on transition), and the target workflow.
+  format: "LangGraph-compatible — nodes (states) + edges (transitions) + conditional edges (guards)"
+  source:
+    stateType: "src/kernel/types/state.ts"
+    transitionTable: "src/kernel/state/transitions.ts"
+    stateDetector: "src/kernel/state/detector.ts"
+    nextActionRecommender: "src/kernel/actions/recommender.ts"
+  totalStates: 35
+    - 23 existing active (non-legacy) states
+    - 3 legacy states (kept for backward compatibility)
+    - 5 new brownfield discovery states
+    - 4 new bugfix states
+
+# =============================================================================
+# STATES
+# =============================================================================
+states:
+
+  # --- Project-level states (Greenfield / Brownfield) ---
+  - id: no-project
+    type: project
+    category: initial
+    workflow: greenfield
+    label: "No Project"
+    description: "No Devflow project scaffolding detected."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "!inspection.hasDotDevflow && !inspection.hasPackageJson && !inspection.hasSrcDir && !inspection.hasGit"
+
+  - id: greenfield-idea
+    type: project
+    category: initial
+    workflow: greenfield
+    label: "Greenfield Idea"
+    description: "New project idea exists — empty directory or minimal scaffold."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "!inspection.hasDotDevflow && (inspection.hasPackageJson || inspection.hasGit) && inspection.fileCount <= 10"
+
+  - id: greenfield-specified
+    type: project
+    category: specification
+    workflow: greenfield
+    label: "Greenfield Specified"
+    description: "Greenfield project has specifications written."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "inspection.hasDotDevflow && inspection.hasDevArtifacts && !inspection.activeFeature && !(inspection.fileCount > 10)"
+
+  - id: brownfield-unknown
+    type: project
+    category: initial
+    workflow: brownfield
+    label: "Brownfield Unknown"
+    description: "Existing codebase detected, no Devflow init — needs discovery."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "!inspection.hasDotDevflow && inspection.fileCount > 10"
+
+  - id: brownfield-discovered
+    type: project
+    category: discovery
+    workflow: brownfield
+    label: "Brownfield Discovered"
+    description: "Devflow initialized on existing codebase, project structure mapped."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "inspection.hasDotDevflow && !inspection.hasDevArtifacts"
+
+  - id: brownfield-specified
+    type: project
+    category: specification
+    workflow: brownfield
+    label: "Brownfield Specified"
+    description: "Discovery specs written — architecture and domain documented."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "inspection.hasDotDevflow && inspection.hasDevArtifacts && !inspection.activeFeature && inspection.fileCount > 10"
+
+  # --- Depth Discovery states (NEW — brownfield deep analysis) ---
+  - id: discovery-scout
+    type: discovery
+    category: deep-analysis
+    workflow: brownfield
+    label: "Discovery Scout"
+    description: "Superficial scan of project structure, file tree, and tech stack."
+    terminal: false
+    meta:
+      confidence: medium
+      detector: "scanner"
+
+  - id: discovery-archaeologist
+    type: discovery
+    category: deep-analysis
+    workflow: brownfield
+    label: "Discovery Archaeologist"
+    description: "Deep code archaeology — dependency graph, module coupling, dead code detection."
+    terminal: false
+    meta:
+      confidence: medium
+      detector: "archaeologist"
+
+  - id: discovery-detective
+    type: discovery
+    category: deep-analysis
+    workflow: brownfield
+    label: "Discovery Detective"
+    description: "Behavioral analysis — runtime traces, error patterns, security audit."
+    terminal: false
+    meta:
+      confidence: medium
+      detector: "detective"
+
+  - id: discovery-architect
+    type: discovery
+    category: deep-analysis
+    workflow: brownfield
+    label: "Discovery Architect"
+    description: "Architecture reconstruction — component boundaries, data flow, integration points."
+    terminal: false
+    meta:
+      confidence: medium
+      detector: "architect"
+
+  - id: discovery-writer
+    type: discovery
+    category: deep-analysis
+    workflow: brownfield
+    label: "Discovery Writer"
+    description: "Consolidation of all discovery artifacts into spec documents."
+    terminal: false
+    meta:
+      confidence: medium
+      detector: "writer"
+
+  # --- Feature pipeline states ---
+  - id: feature-empty
+    type: feature
+    category: inception
+    workflow: greenfield
+    label: "Feature Empty"
+    description: "Active feature exists but no requirements written."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "inspection.activeFeature && !f.hasRequirements"
+
+  - id: feature-requirements
+    type: feature
+    category: inception
+    workflow: greenfield
+    label: "Feature Requirements"
+    description: "Requirements documented but not yet audited."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "f.hasRequirements && !f.hasQualityAudit"
+
+  - id: feature-clarification-needed
+    type: feature
+    category: inception
+    workflow: greenfield
+    label: "Feature Clarification Needed"
+    description: "Requirements have [DOUBT] markers that block progress."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "f.hasRequirements && f.requirementsDoubts"
+
+  - id: feature-design
+    type: feature
+    category: design
+    workflow: greenfield
+    label: "Feature Design"
+    description: "Architectural design in progress."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "f.hasRequirements && !f.requirementsDoubts && f.hasQualityAudit && !f.hasRoadmap"
+
+  - id: feature-design-reviewed
+    type: feature
+    category: design
+    workflow: greenfield
+    label: "Feature Design Reviewed"
+    description: "Architectural design reviewed and approved."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "f.hasRequirements && !f.requirementsDoubts && f.hasQualityAudit && f.hasRoadmap && !f.hasTestPlan"
+
+  - id: feature-test-plan
+    type: feature
+    category: planning
+    workflow: greenfield
+    label: "Feature Test Plan"
+    description: "Test plan being created."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "f.hasRequirements && !f.requirementsDoubts && f.hasQualityAudit && f.hasRoadmap && f.hasTestPlan && !f.hasActions"
+
+  - id: feature-test-plan-ready
+    type: feature
+    category: planning
+    workflow: greenfield
+    label: "Feature Test Plan Ready"
+    description: "Test plan completed and reviewed."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "f.hasTestPlan && !f.hasImplementationLog"
+
+  - id: feature-pre-code-audit
+    type: feature
+    category: planning
+    workflow: greenfield
+    label: "Feature Pre-Code Audit"
+    description: "Pre-code audit — final gate before implementation."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "f.hasRequirements && f.hasRoadmap && f.hasActions && f.hasQualityAudit && f.hasTestPlan && !f.hasImplementationLog"
+
+  - id: feature-coding-ready
+    type: feature
+    category: implementation
+    workflow: greenfield
+    label: "Feature Coding Ready"
+    description: "All gates passed — safe to begin coding."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "f.hasRequirements && !f.requirementsDoubts && f.hasQualityAudit && f.hasRoadmap && f.hasActions && f.hasTestPlan && f.hasLegacyImpact && f.hasRegressionWatch && !f.hasImplementationLog"
+
+  - id: feature-coding-in-progress
+    type: feature
+    category: implementation
+    workflow: greenfield
+    label: "Feature Coding In Progress"
+    description: "Implementation actively in progress."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "f.hasImplementationLog && !f.hasQaReport && f.actionsCompletionRatio < 1.0"
+
+  - id: feature-verification
+    type: feature
+    category: verification
+    workflow: greenfield
+    label: "Feature Verification"
+    description: "Implementation complete — running deterministic checks."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "f.actionsCompletionRatio >= 1.0 && f.hasImplementationLog && !f.hasQaReport"
+
+  - id: feature-ci-verified
+    type: feature
+    category: verification
+    workflow: greenfield
+    label: "Feature CI Verified"
+    description: "CI pipeline confirms all checks pass on clean environment."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "f.actionsCompletionRatio >= 1.0 && f.hasImplementationLog && f.hasQaReport && !f.hasRegressionWatch"
+
+  - id: feature-review
+    type: feature
+    category: review
+    workflow: greenfield
+    label: "Feature In Review"
+    description: "Feature submitted for independent review."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "f.actionsCompletionRatio >= 1.0 && f.hasQaReport && f.hasTestPlan && f.hasImplementationLog && !f.hasRegressionWatch"
+
+  - id: feature-adversarial-review
+    type: feature
+    category: review
+    workflow: greenfield
+    label: "Feature Adversarial Review"
+    description: "Adversarial review — attempt to break the feature."
+    terminal: false
+    meta:
+      confidence: medium
+      detection: "Flagged by gatekeeper or triggered by risk level"
+
+  - id: feature-done
+    type: feature
+    category: completion
+    workflow: greenfield
+    label: "Feature Done"
+    description: "Feature complete and fully validated."
+    terminal: true
+    meta:
+      confidence: high
+      detection: "f.hasQaReport && f.hasRegressionWatch && f.hasLegacyImpact && f.actionsCompletionRatio >= 1.0"
+
+  # --- Anomaly states ---
+  - id: drift-detected
+    type: anomaly
+    category: drift
+    workflow: greenfield
+    label: "Drift Detected"
+    description: "Code has diverged from documented specifications."
+    terminal: false
+    meta:
+      confidence: medium
+      detection: "inspection.gitStatus === 'dirty' && inspection.hasDotDevflow && inspection.activeFeature && stateFile contains 'drift-detected'"
+
+  - id: blocked
+    type: anomaly
+    category: block
+    workflow: greenfield
+    label: "Blocked"
+    description: "Explicit blocker set — progress halted."
+    terminal: false
+    meta:
+      confidence: high
+      detection: "stateFile.currentState === 'blocked' && stateFile.blockers.length > 0"
+
+  # --- Legacy states (deprecated — backward compatibility) ---
+  - id: feature-planning
+    type: feature
+    category: planning
+    workflow: legacy
+    label: "Feature Planning"
+    description: "[LEGACY] Roadmap exists but no actions created."
+    terminal: false
+    deprecated: true
+
+  - id: feature-planned
+    type: feature
+    category: planning
+    workflow: legacy
+    label: "Feature Planned"
+    description: "[LEGACY] Actions exist but none started."
+    terminal: false
+    deprecated: true
+
+  - id: feature-todo
+    type: feature
+    category: planning
+    workflow: legacy
+    label: "Feature Todo"
+    description: "[LEGACY] Some actions completed, some remaining."
+    terminal: false
+    deprecated: true
+
+  # --- Bugfix states (NEW — simplified shortcut workflow) ---
+  - id: bugfix-detected
+    type: bugfix
+    category: inception
+    workflow: bugfix
+    label: "Bug Detected"
+    description: "Bug identified and reported — no fix started."
+    terminal: false
+
+  - id: bugfix-implementing
+    type: bugfix
+    category: implementation
+    workflow: bugfix
+    label: "Bug Fix In Progress"
+    description: "Fix implementation in progress."
+    terminal: false
+
+  - id: bugfix-verifying
+    type: bugfix
+    category: verification
+    workflow: bugfix
+    label: "Bug Fix Verifying"
+    description: "Fix applied — validation running."
+    terminal: false
+
+  - id: bugfix-done
+    type: bugfix
+    category: completion
+    workflow: bugfix
+    label: "Bug Fixed"
+    description: "Bug fix verified and merged."
+    terminal: true
+
+# =============================================================================
+# TRANSITIONS
+# =============================================================================
+transitions:
+
+  # --------------------------------------------------------------------------
+  # GREENFIELD WORKFLOW: Project init pipeline
+  # --------------------------------------------------------------------------
+
+  - id: t001
+    from: no-project
+    to: greenfield-idea
+    workflow: greenfield
+    label: "Create Project Idea"
+    guard: hasMinimalCodeAndNoDevflow
+    effect: detectProjectType
+    description: "User has source code or git but no Devflow — classify as greenfield if small."
+
+  - id: t002
+    from: no-project
+    to: brownfield-unknown
+    workflow: brownfield
+    label: "Detect Existing Codebase"
+    guard: hasExistingCodebaseAndNoDevflow
+    effect: detectProjectType
+    description: "User has significant code (>10 files) without Devflow — classify as brownfield."
+
+  - id: t003
+    from: greenfield-idea
+    to: greenfield-specified
+    workflow: greenfield
+    label: "Write Specs"
+    guard: devflowInitialized
+    effect: initDevflow
+    description: "Run devflow install → create .devflow/ structure."
+
+  - id: t004
+    from: greenfield-idea
+    to: feature-empty
+    workflow: greenfield
+    label: "Skip Specs — Create Feature"
+    guard: devflowInitializedAndUserOptsOut
+    effect: initDevflow
+    description: "User skips spec writing and creates a feature directly."
+
+  - id: t005
+    from: greenfield-specified
+    to: feature-empty
+    workflow: greenfield
+    label: "Create First Feature"
+    guard: hasActiveFeature
+    effect: createFeature
+    description: "Specs exist — start decomposing into features."
+
+  # --------------------------------------------------------------------------
+  # BROWNFIELD WORKFLOW: Discovery → feature pipeline
+  # --------------------------------------------------------------------------
+
+  - id: t006
+    from: brownfield-unknown
+    to: brownfield-discovered
+    workflow: brownfield
+    label: "Install Devflow"
+    guard: devflowInitialized
+    effect: initDevflow
+    description: "Run devflow install to map existing project."
+
+  - id: t007
+    from: brownfield-unknown
+    to: feature-empty
+    workflow: brownfield
+    label: "Skip Discovery — Create Feature"
+    guard: devflowInitializedAndUserOptsOut
+    effect: initDevflow
+    description: "User skips discovery and goes straight to features."
+
+  - id: t008
+    from: brownfield-discovered
+    to: brownfield-specified
+    workflow: brownfield
+    label: "Write Discovery Specs"
+    guard: discoverySpecsWritten
+    effect: writeDiscoverySpecs
+    description: "Generate architecture.md and domain.md in _devflow/discovery/."
+
+  - id: t009
+    from: brownfield-discovered
+    to: feature-empty
+    workflow: brownfield
+    label: "Skip Discovery Specs"
+    guard: userSkipsDiscoverySpecs
+    effect: null
+    description: "User starts feature without full discovery specs."
+
+  - id: t010
+    from: brownfield-specified
+    to: feature-empty
+    workflow: brownfield
+    label: "Create Feature (Brownfield)"
+    guard: hasActiveFeature
+    effect: createFeature
+    description: "Discovery complete — start feature work."
+
+  # --- Brownfield deep discovery chain (NEW) ---
+  - id: t011
+    from: brownfield-unknown
+    to: discovery-scout
+    workflow: brownfield
+    label: "Start Deep Discovery"
+    guard: deepDiscoveryRequested
+    effect: startScout
+    description: "User opts in for deep brownfield discovery instead of quick install."
+
+  - id: t012
+    from: discovery-scout
+    to: discovery-archaeologist
+    workflow: brownfield
+    label: "Deep Archaeology"
+    guard: scoutComplete
+    effect: startArchaeology
+    description: "Surface scan complete — dive into dependency analysis."
+
+  - id: t013
+    from: discovery-archaeologist
+    to: discovery-detective
+    workflow: brownfield
+    label: "Behavioral Analysis"
+    guard: archaeologyComplete
+    effect: startDetection
+    description: "Dependency map done — analyze runtime behavior."
+
+  - id: t014
+    from: discovery-detective
+    to: discovery-architect
+    workflow: brownfield
+    label: "Architecture Reconstruction"
+    guard: detectionComplete
+    effect: reconstructArchitecture
+    description: "Behavior patterns captured — reconstruct architecture."
+
+  - id: t015
+    from: discovery-architect
+    to: discovery-writer
+    workflow: brownfield
+    label: "Consolidate Findings"
+    guard: architectureComplete
+    effect: writeDiscoveryDocs
+    description: "Architecture mapped — consolidate into discovery specs."
+
+  - id: t016
+    from: discovery-writer
+    to: brownfield-specified
+    workflow: brownfield
+    label: "Discovery Complete"
+    guard: discoveryDocsWritten
+    effect: finalizeDiscovery
+    description: "All discovery artifacts generated — project is fully specified."
+
+  # --- Deep discovery can short-circuit back to feature pipeline ---
+  - id: t017
+    from: discovery-scout
+    to: feature-empty
+    workflow: brownfield
+    label: "Abort Discovery — Start Feature"
+    guard: userSkipsDeepDiscovery
+    effect: null
+    description: "User has enough surface-level info to start work."
+
+  - id: t018
+    from: discovery-archaeologist
+    to: feature-empty
+    workflow: brownfield
+    label: "Abort Deep Analysis — Start Feature"
+    guard: userSkipsDeepDiscovery
+    effect: null
+    description: "User decides dependency analysis is sufficient."
+
+  - id: t019
+    from: discovery-detective
+    to: feature-empty
+    workflow: brownfield
+    label: "Abort Behavior Analysis — Start Feature"
+    guard: userSkipsDeepDiscovery
+    effect: null
+    description: "User decides runtime analysis not needed."
+
+  - id: t020
+    from: discovery-architect
+    to: feature-empty
+    workflow: brownfield
+    label: "Skip Consolidation — Start Feature"
+    guard: userSkipsDeepDiscovery
+    effect: null
+    description: "Architecture understanding is sufficient without docs."
+
+  # --------------------------------------------------------------------------
+  # FEATURE PIPELINE: Common to all workflows
+  # --------------------------------------------------------------------------
+
+  - id: t021
+    from: feature-empty
+    to: feature-requirements
+    workflow: greenfield
+    label: "Write Requirements"
+    guard: null
+    effect: createRequirements
+    description: "Create requirements.md for the active feature."
+
+  - id: t022
+    from: feature-requirements
+    to: feature-clarification-needed
+    workflow: greenfield
+    label: "Flag Doubts"
+    guard: requirementsHaveDoubts
+    effect: flagDoubts
+    description: "Review found [DOUBT] markers that need resolution."
+
+  - id: t023
+    from: feature-requirements
+    to: feature-design
+    workflow: greenfield
+    label: "Approve Requirements — Start Design"
+    guard: requirementsApproved
+    effect: null
+    description: "Requirements reviewed and clean — proceed to design."
+
+  - id: t024
+    from: feature-clarification-needed
+    to: feature-requirements
+    workflow: greenfield
+    label: "Return Clarified"
+    guard: doubtsResolved
+    effect: resolveDoubts
+    description: "[DOUBT] markers resolved — requirements ready for re-review."
+
+  - id: t025
+    from: feature-clarification-needed
+    to: feature-design
+    workflow: greenfield
+    label: "Skip to Design"
+    guard: doubtsResolvedQuickly
+    effect: resolveDoubts
+    description: "Minor doubts resolved — proceed directly to design."
+
+  - id: t026
+    from: feature-design
+    to: feature-design-reviewed
+    workflow: greenfield
+    label: "Submit for Design Review"
+    guard: designComplete
+    effect: startDesignReview
+    description: "Architectural design ready for independent review."
+
+  - id: t027
+    from: feature-design-reviewed
+    to: feature-test-plan
+    workflow: greenfield
+    label: "Create Test Plan"
+    guard: null
+    effect: createTestPlan
+    description: "Design approved — create test-plan.md."
+
+  - id: t028
+    from: feature-test-plan
+    to: feature-test-plan-ready
+    workflow: greenfield
+    label: "Review Test Plan"
+    guard: testPlanComplete
+    effect: reviewTestPlan
+    description: "Test plan drafted — review for completeness."
+
+  - id: t029
+    from: feature-test-plan-ready
+    to: feature-pre-code-audit
+    workflow: greenfield
+    label: "Run Pre-Code Audit"
+    guard: testPlanApproved
+    effect: runPreCodeAudit
+    description: "All planning artifacts ready — final gate before coding."
+
+  - id: t030
+    from: feature-pre-code-audit
+    to: feature-coding-ready
+    workflow: greenfield
+    label: "Pass Audit"
+    guard: auditPassed
+    effect: null
+    description: "Audit passes — ready to start coding."
+
+  - id: t031
+    from: feature-pre-code-audit
+    to: feature-empty
+    workflow: greenfield
+    label: "Audit Failed — Return to Start"
+    guard: auditFailedAndNeedsRestart
+    effect: resetFeature
+    description: "Audit reveals fundamental issues — restart from requirements."
+
+  - id: t032
+    from: feature-coding-ready
+    to: feature-coding-in-progress
+    workflow: greenfield
+    label: "Start Coding"
+    guard: null
+    effect: startImplementation
+    description: "All gates passed — begin implementation."
+
+  - id: t033
+    from: feature-coding-in-progress
+    to: feature-verification
+    workflow: greenfield
+    label: "Complete Coding — Verify"
+    guard: allActionsComplete
+    effect: runVerification
+    description: "All implementation actions done — run deterministic checks."
+
+  - id: t034
+    from: feature-coding-in-progress
+    to: drift-detected
+    workflow: greenfield
+    label: "Detect Drift"
+    guard: gitDirtyAndSpecChanged
+    effect: flagDrift
+    description: "Code changes diverge from specs during implementation."
+
+  - id: t035
+    from: feature-coding-in-progress
+    to: blocked
+    workflow: greenfield
+    label: "Encounter Blocker"
+    guard: explicitBlockerSet
+    effect: setBlocked
+    description: "Implementation hits a blocker that halts progress."
+
+  - id: t036
+    from: feature-verification
+    to: feature-ci-verified
+    workflow: greenfield
+    label: "CI Verifies"
+    guard: ciPasses
+    effect: recordCiPass
+    description: "Local checks pass — CI confirms on clean environment."
+
+  - id: t037
+    from: feature-verification
+    to: feature-review
+    workflow: greenfield
+    label: "Submit for Review"
+    guard: verificationPassed
+    effect: submitForReview
+    description: "Verification passes — submit for independent review."
+
+  - id: t038
+    from: feature-verification
+    to: feature-coding-in-progress
+    workflow: greenfield
+    label: "Verification Failed — Return to Coding"
+    guard: verificationFailed
+    effect: logVerificationFailure
+    description: "Some checks failed — return to implementation."
+
+  - id: t039
+    from: feature-ci-verified
+    to: feature-review
+    workflow: greenfield
+    label: "CI Verified — Proceed to Review"
+    guard: null
+    effect: submitForReview
+    description: "CI confirms — move to independent review."
+
+  # --- QA Loop transitions ---
+  - id: t040
+    from: feature-review
+    to: feature-done
+    workflow: qa-loop
+    label: "QA Pass — Approve"
+    guard: qaPassed
+    effect: completeFeature
+    description: "Independent review passes all quality checks."
+
+  - id: t041
+    from: feature-review
+    to: feature-adversarial-review
+    workflow: qa-loop
+    label: "Escalate to Adversarial Review"
+    guard: adversarialReviewRequired
+    effect: startAdversarialReview
+    description: "Standard review suggests deeper adversarial analysis needed."
+
+  - id: t042
+    from: feature-review
+    to: feature-coding-in-progress
+    workflow: qa-loop
+    label: "QA Fail — Return to Fix"
+    guard: qaFailed
+    effect: logQaFailure
+    description: "Review found issues requiring code changes."
+
+  - id: t043
+    from: feature-adversarial-review
+    to: feature-done
+    workflow: qa-loop
+    label: "Adversarial Pass — Approve"
+    guard: adversarialReviewPassed
+    effect: completeFeature
+    description: "Adversarial review confirms feature is robust."
+
+  - id: t044
+    from: feature-adversarial-review
+    to: feature-coding-in-progress
+    workflow: qa-loop
+    label: "Adversarial Fail — Return to Fix"
+    guard: adversarialReviewFailed
+    effect: logAdversarialFailure
+    description: "Adversarial review found breakable assumptions."
+
+  # --- Drift and Blocked resolution ---
+  - id: t045
+    from: drift-detected
+    to: blocked
+    workflow: greenfield
+    label: "Drift Becomes Blocker"
+    guard: driftUnresolvable
+    effect: setBlocked
+    description: "Drift cannot be reconciled — escalate to blocked."
+
+  - id: t046
+    from: drift-detected
+    to: feature-empty
+    workflow: greenfield
+    label: "Restart from Scratch"
+    guard: restartRequested
+    effect: resetFeature
+    description: "Feature needs full restart due to irreconcilable drift."
+
+  - id: t047
+    from: drift-detected
+    to: feature-verification
+    workflow: greenfield
+    label: "Drift Reconciled — Re-Verify"
+    guard: driftReconciled
+    effect: reconcileDrift
+    description: "Specs or code updated to resolve drift — re-verify."
+
+  - id: t048
+    from: blocked
+    to: feature-empty
+    workflow: greenfield
+    label: "Abort Feature"
+    guard: abortRequested
+    effect: abortFeature
+    description: "Blocker unresolved — abandon feature."
+
+  - id: t049
+    from: blocked
+    to: feature-coding-in-progress
+    workflow: greenfield
+    label: "Blocker Resolved — Resume Coding"
+    guard: blockerResolved
+    effect: clearBlocked
+    description: "Blocker removed — return to implementation."
+
+  - id: t050
+    from: blocked
+    to: feature-done
+    workflow: greenfield
+    label: "Blocker Resolved — Complete"
+    guard: blockerResolvedAndCodeComplete
+    effect: clearBlocked
+    description: "Blocker resolved and no remaining work — mark done."
+
+  # --- Feature Done → Next Feature cycle ---
+  - id: t051
+    from: feature-done
+    to: feature-empty
+    workflow: greenfield
+    label: "Start Next Feature"
+    guard: null
+    effect: createFeature
+    description: "Feature complete — start next feature cycle."
+
+  - id: t052
+    from: feature-done
+    to: drift-detected
+    workflow: greenfield
+    label: "Post-Completion Drift"
+    guard: postCompletionDrift
+    effect: flagDrift
+    description: "Drift detected after feature marked complete."
+
+  # --------------------------------------------------------------------------
+  # LEGACY TRANSITIONS (deprecated — backward compatibility)
+  # --------------------------------------------------------------------------
+
+  - id: t101
+    from: feature-clarification-needed
+    to: feature-design
+    workflow: legacy
+    label: "Proceed to Design"
+    guard: null
+    effect: null
+    description: "[LEGACY] Clarification resolved — move to design."
+
+  - id: t102
+    from: feature-clarification-needed
+    to: feature-requirements
+    workflow: legacy
+    label: "Return to Requirements"
+    guard: null
+    effect: null
+    description: "[LEGACY] Return to requirements for rewrite."
+
+  - id: t103
+    from: feature-planning
+    to: feature-planned
+    workflow: legacy
+    label: "Create Actions"
+    guard: null
+    effect: createActions
+    description: "[LEGACY] Decompose roadmap into actions."
+
+  - id: t104
+    from: feature-planned
+    to: feature-todo
+    workflow: legacy
+    label: "Start Work"
+    guard: null
+    effect: null
+    description: "[LEGACY] Begin working on planned actions."
+
+  - id: t105
+    from: feature-planned
+    to: feature-pre-code-audit
+    workflow: legacy
+    label: "Skip to Pre-Code Audit"
+    guard: null
+    effect: null
+    description: "[LEGACY] Actions defined — proceed to audit."
+
+  - id: t106
+    from: feature-todo
+    to: feature-pre-code-audit
+    workflow: legacy
+    label: "Actions Complete — Audit"
+    guard: null
+    effect: runPreCodeAudit
+    description: "[LEGACY] Remaining actions done — proceed to audit."
+
+  - id: t107
+    from: feature-pre-code-audit
+    to: feature-coding-ready
+    workflow: legacy
+    label: "Audit Passed"
+    guard: null
+    effect: null
+    description: "[LEGACY] Pre-code audit passes."
+
+  - id: t108
+    from: feature-pre-code-audit
+    to: feature-empty
+    workflow: legacy
+    label: "Audit Failed — Restart"
+    guard: null
+    effect: resetFeature
+    description: "[LEGACY] Feature needs restart."
+
+  - id: t109
+    from: feature-coding-ready
+    to: feature-coding-in-progress
+    workflow: legacy
+    label: "Start Coding"
+    guard: null
+    effect: startImplementation
+    description: "[LEGACY] Begin implementation."
+
+  # --------------------------------------------------------------------------
+  # BUGFIX WORKFLOW (NEW — simplified shortcut)
+  # --------------------------------------------------------------------------
+
+  - id: t201
+    from: bugfix-detected
+    to: bugfix-implementing
+    workflow: bugfix
+    label: "Start Fix"
+    guard: bugConfirmed
+    effect: startBugfix
+    description: "Bug confirmed — begin implementation of fix."
+
+  - id: t202
+    from: bugfix-detected
+    to: bugfix-done
+    workflow: bugfix
+    label: "Won't Fix"
+    guard: bugWontFix
+    effect: wontFix
+    description: "Bug acknowledged but not fixed (out of scope, low priority, by design)."
+
+  - id: t203
+    from: bugfix-implementing
+    to: bugfix-verifying
+    workflow: bugfix
+    label: "Fix Applied — Verify"
+    guard: fixImplemented
+    effect: verifyBugfix
+    description: "Fix coded — run verification suite."
+
+  - id: t204
+    from: bugfix-implementing
+    to: blocked
+    workflow: bugfix
+    label: "Fix Blocked"
+    guard: bugfixBlockerDetected
+    effect: setBlocked
+    description: "Fix implementation encounters a blocker."
+
+  - id: t205
+    from: bugfix-verifying
+    to: bugfix-done
+    workflow: bugfix
+    label: "Fix Verified — Complete"
+    guard: bugfixVerificationPassed
+    effect: finalizeBugfix
+    description: "All checks pass — bug fix complete."
+
+  - id: t206
+    from: bugfix-verifying
+    to: bugfix-implementing
+    workflow: bugfix
+    label: "Fix Failed — Return to Implement"
+    guard: bugfixVerificationFailed
+    effect: logBugfixFailure
+    description: "Verification failed — return to fix."
+
+  - id: t207
+    from: bugfix-done
+    to: feature-empty
+    workflow: bugfix
+    label: "Next Task After Bugfix"
+    guard: null
+    effect: createFeature
+    description: "Bug fixed — start next task or feature."
+
+  - id: t208
+    from: bugfix-done
+    to: drift-detected
+    workflow: bugfix
+    label: "Bugfix Drift"
+    guard: postBugfixDrift
+    effect: flagDrift
+    description: "Bugfix introduced spec drift."
+
+  - id: t209
+    from: bugfix-detected
+    to: feature-empty
+    workflow: bugfix
+    label: "Upgrade Bug to Feature"
+    guard: bugUpgradedToFeature
+    effect: createFeature
+    description: "Bug requires full feature workflow — escalate."
+
+  # --- Bugfix can also be entered from feature pipeline ---
+  - id: t210
+    from: feature-coding-in-progress
+    to: bugfix-detected
+    workflow: bugfix
+    label: "Detect Bug During Implementation"
+    guard: bugFoundDuringCoding
+    effect: flagBug
+    description: "Developer discovers unrelated bug during feature work."
+
+  - id: t211
+    from: feature-review
+    to: bugfix-detected
+    workflow: bugfix
+    label: "Review Finds Bug"
+    guard: bugFoundDuringReview
+    effect: flagBug
+    description: "Reviewer discovers a bug in the feature."
+
+  - id: t212
+    from: feature-done
+    to: bugfix-detected
+    workflow: bugfix
+    label: "Bug Found in Production"
+    guard: regressionBugFound
+    effect: flagBug
+    description: "Bug reported post-release — enter bugfix workflow."
+
+# =============================================================================
+# GUARDS
+# =============================================================================
+guards:
+  - id: hasMinimalCodeAndNoDevflow
+    description: "No Devflow, but has some code or git."
+    logic: "!inspection.hasDotDevflow && (inspection.hasPackageJson || inspection.hasGit) && inspection.fileCount <= 10"
+
+  - id: hasExistingCodebaseAndNoDevflow
+    description: "No Devflow, and significant existing codebase."
+    logic: "!inspection.hasDotDevflow && inspection.fileCount > 10"
+
+  - id: devflowInitialized
+    description: "Devflow init completed."
+    logic: "inspection.hasDotDevflow"
+
+  - id: devflowInitializedAndUserOptsOut
+    description: "Devflow init done, user chooses to skip intermediate specs."
+    logic: "inspection.hasDotDevflow && userDecision === 'skip-specs'"
+
+  - id: hasActiveFeature
+    description: "User ran devflow feature new."
+    logic: "inspection.activeFeature !== null"
+
+  - id: discoverySpecsWritten
+    description: "Discovery specs exist in _devflow/discovery/."
+    logic: "inspection.hasDevArtifacts"
+
+  - id: userSkipsDiscoverySpecs
+    description: "User chooses to bypass discovery specs."
+    logic: "userDecision === 'skip-discovery-specs'"
+
+  - id: deepDiscoveryRequested
+    description: "User opts into deep brownfield discovery."
+    logic: "userDecision === 'deep-discovery'"
+
+  - id: scoutComplete
+    description: "Scout phase produced file tree and tech stack report."
+    logic: "exists('_devflow/discovery/scout-report.md')"
+
+  - id: archaeologyComplete
+    description: "Archaeology phase produced dependency analysis."
+    logic: "exists('_devflow/discovery/archaeology-report.md')"
+
+  - id: detectionComplete
+    description: "Detective phase produced behavior analysis."
+    logic: "exists('_devflow/discovery/detective-report.md')"
+
+  - id: architectureComplete
+    description: "Architecture reconstruction produced architecture docs."
+    logic: "exists('_devflow/discovery/architecture-reconstruction.md')"
+
+  - id: discoveryDocsWritten
+    description: "Writer consolidated all findings into spec docs."
+    logic: "exists('_devflow/discovery/consolidated-spec.md')"
+
+  - id: userSkipsDeepDiscovery
+    description: "User aborts deep discovery at any point."
+    logic: "userDecision === 'skip-discovery'"
+
+  - id: requirementsHaveDoubts
+    description: "Requirements review found [DOUBT] markers."
+    logic: "f.requirementsDoubts === true"
+
+  - id: requirementsApproved
+    description: "Requirements reviewed and clean."
+    logic: "f.hasRequirements && !f.requirementsDoubts && f.hasQualityAudit"
+
+  - id: doubtsResolved
+    description: "All [DOUBT] markers have been resolved."
+    logic: "!f.requirementsDoubts"
+
+  - id: doubtsResolvedQuickly
+    description: "Only minor doubts, resolved quickly without full re-review."
+    logic: "!f.requirementsDoubts && userDecision === 'skip-re-review'"
+
+  - id: designComplete
+    description: "Roadmap artifact exists (design documented)."
+    logic: "f.hasRoadmap"
+
+  - id: testPlanComplete
+    description: "Test plan drafted."
+    logic: "f.hasTestPlan"
+
+  - id: testPlanApproved
+    description: "Test plan reviewed and approved."
+    logic: "f.hasTestPlan && !f.hasImplementationLog"
+
+  - id: auditPassed
+    description: "Pre-code audit passes — all artifacts consistent."
+    logic: "f.hasQualityAudit && f.hasLegacyImpact && f.hasRegressionWatch"
+
+  - id: auditFailedAndNeedsRestart
+    description: "Audit reveals fundamental issues requiring restart."
+    logic: "f.hasQualityAudit && userDecision === 'restart'"
+
+  - id: allActionsComplete
+    description: "All implementation actions have been executed."
+    logic: "f.actionsCompletionRatio >= 1.0"
+
+  - id: verificationPassed
+    description: "Deterministic checks pass locally."
+    logic: "f.actionsCompletionRatio >= 1.0 && f.hasImplementationLog"
+
+  - id: verificationFailed
+    description: "Some deterministic checks failed."
+    logic: "f.actionsCompletionRatio >= 1.0 && f.hasImplementationLog && userDecision === 'fix-and-retry'"
+
+  - id: ciPasses
+    description: "CI pipeline confirms all checks pass on clean environment."
+    logic: "ciStatus.conclusion === 'success'"
+
+  - id: gitDirtyAndSpecChanged
+    description: "Git is dirty and spec files have changed."
+    logic: "inspection.gitStatus === 'dirty' && specsModified"
+
+  - id: explicitBlockerSet
+    description: "Blocking issue recorded in state.json."
+    logic: "stateFile.currentState === 'blocked' && stateFile.blockers.length > 0"
+
+  - id: qaPassed
+    description: "Independent review passes all quality checks."
+    logic: "qaVerdict === 'PASS' || qaVerdict === 'CONCERNS'"
+
+  - id: qaFailed
+    description: "Review found HIGH or CRITICAL issues requiring code changes."
+    logic: "qaVerdict === 'FAIL'"
+
+  - id: adversarialReviewRequired
+    description: "Feature risk level or reviewer judgement calls for adversarial review."
+    logic: "riskLevel === 'high' || reviewerDecision === 'adversarial'"
+
+  - id: adversarialReviewPassed
+    description: "Adversarial review found no critical breakable assumptions."
+    logic: "adversarialVerdict === 'PASS'"
+
+  - id: adversarialReviewFailed
+    description: "Adversarial review found issues requiring code changes."
+    logic: "adversarialVerdict === 'FAIL'"
+
+  # --- Drift resolution guards ---
+  - id: driftUnresolvable
+    description: "Drift between code and specs cannot be reconciled."
+    logic: "driftReconciliationFailed"
+
+  - id: restartRequested
+    description: "User requests full restart of current feature."
+    logic: "userDecision === 'restart'"
+
+  - id: driftReconciled
+    description: "Code or specs updated to resolve drift."
+    logic: "driftResolved"
+
+  - id: abortRequested
+    description: "User abandons current feature."
+    logic: "userDecision === 'abort'"
+
+  - id: blockerResolved
+    description: "All blockers recorded in state.json have been resolved."
+    logic: "stateFile.blockers.length === 0"
+
+  - id: blockerResolvedAndCodeComplete
+    description: "Blocker resolved and all actions were already complete."
+    logic: "stateFile.blockers.length === 0 && f.actionsCompletionRatio >= 1.0"
+
+  - id: postCompletionDrift
+    description: "Drift detected in completed feature."
+    logic: "inspection.gitStatus === 'dirty' && driftDetectedFlag"
+
+  # --- Bugfix guards ---
+  - id: bugConfirmed
+    description: "Bug has been confirmed as valid."
+    logic: "bugStatus === 'confirmed'"
+
+  - id: bugWontFix
+    description: "Bug acknowledged but will not be fixed."
+    logic: "bugStatus === 'wont-fix'"
+
+  - id: fixImplemented
+    description: "Bug fix code has been written."
+    logic: "bugfixImplementationComplete"
+
+  - id: bugfixBlockerDetected
+    description: "Fix implementation encounters a blocker."
+    logic: "stateFile.currentState === 'blocked'"
+
+  - id: bugfixVerificationPassed
+    description: "Bug fix verification checks pass."
+    logic: "bugfixVerificationStatus === 'passed'"
+
+  - id: bugfixVerificationFailed
+    description: "Bug fix verification checks fail."
+    logic: "bugfixVerificationStatus === 'failed'"
+
+  - id: postBugfixDrift
+    description: "Bugfix introduced spec drift."
+    logic: "inspection.gitStatus === 'dirty' && driftDetectedFlag"
+
+  - id: bugUpgradedToFeature
+    description: "Bug is complex enough to require full feature workflow."
+    logic: "bugStatus === 'upgraded-to-feature'"
+
+  - id: bugFoundDuringCoding
+    description: "Developer finds unrelated bug during feature implementation."
+    logic: "bugFound === true && bugSource === 'development'"
+
+  - id: bugFoundDuringReview
+    description: "Reviewer discovers bug in the feature."
+    logic: "bugFound === true && bugSource === 'review'"
+
+  - id: regressionBugFound
+    description: "Bug reported post-release."
+    logic: "bugFound === true && bugSource === 'production'"
+
+# =============================================================================
+# EFFECTS
+# =============================================================================
+effects:
+  - id: detectProjectType
+    description: "Classify project as greenfield or brownfield based on code volume."
+    writes: []
+    reads: ["<project files>"]
+    async: false
+
+  - id: initDevflow
+    description: "Initialize Devflow project structure."
+    writes:
+      - ".devflow/config.json"
+      - ".devflow/state.json"
+      - "DEVFLOW.md"
+    reads: ["<project root>"]
+    async: true
+
+  - id: createFeature
+    description: "Create a new active feature workspace."
+    writes:
+      - "_devflow/features/<id>/requirements.md"
+    reads: ["_devflow/specs/*", "_devflow/discovery/*"]
+    async: true
+
+  - id: writeDiscoverySpecs
+    description: "Generate architecture.md and domain.md discovery specs."
+    writes:
+      - "_devflow/discovery/architecture.md"
+      - "_devflow/discovery/domain.md"
+    reads: ["<project source files>"]
+    async: true
+
+  - id: startScout
+    description: "Run surface-level project scan."
+    writes:
+      - "_devflow/discovery/scout-report.md"
+    reads: ["<project files>"]
+    async: true
+
+  - id: startArchaeology
+    description: "Run deep dependency and coupling analysis."
+    writes:
+      - "_devflow/discovery/archaeology-report.md"
+    reads: ["<project source files>"]
+    async: true
+
+  - id: startDetection
+    description: "Run behavioral and security analysis."
+    writes:
+      - "_devflow/discovery/detective-report.md"
+    reads: ["<project source files>", "<runtime traces>"]
+    async: true
+
+  - id: reconstructArchitecture
+    description: "Reconstruct architecture from analysis findings."
+    writes:
+      - "_devflow/discovery/architecture-reconstruction.md"
+    reads:
+      - "_devflow/discovery/scout-report.md"
+      - "_devflow/discovery/archaeology-report.md"
+      - "_devflow/discovery/detective-report.md"
+    async: true
+
+  - id: writeDiscoveryDocs
+    description: "Consolidate all discovery findings into spec documents."
+    writes:
+      - "_devflow/discovery/consolidated-spec.md"
+    reads:
+      - "_devflow/discovery/architecture-reconstruction.md"
+    async: true
+
+  - id: finalizeDiscovery
+    description: "Finalize discovery phase and transition to specified state."
+    writes: []
+    reads: ["_devflow/discovery/*"]
+    async: false
+
+  - id: createRequirements
+    description: "Generate requirements.md for active feature."
+    writes: ["_devflow/features/<id>/requirements.md"]
+    reads: ["_devflow/specs/*"]
+    async: true
+
+  - id: flagDoubts
+    description: "Create clarification.md with [DOUBT] markers."
+    writes: ["_devflow/features/<id>/clarification.md"]
+    reads: ["_devflow/features/<id>/requirements.md"]
+    async: false
+
+  - id: resolveDoubts
+    description: "Remove resolved [DOUBT] markers from requirements."
+    writes: ["_devflow/features/<id>/clarification.md"]
+    reads: ["_devflow/features/<id>/requirements.md"]
+    async: false
+
+  - id: startDesignReview
+    description: "Submit design for independent review."
+    writes: []
+    reads: ["_devflow/features/<id>/roadmap.md"]
+    async: true
+
+  - id: createTestPlan
+    description: "Generate test-plan.md from design."
+    writes: ["_devflow/features/<id>/test-plan.md"]
+    reads: ["_devflow/features/<id>/roadmap.md"]
+    async: true
+
+  - id: reviewTestPlan
+    description: "Review test plan for completeness."
+    writes: []
+    reads: ["_devflow/features/<id>/test-plan.md"]
+    async: false
+
+  - id: runPreCodeAudit
+    description: "Execute pre-code quality audit."
+    writes:
+      - "_devflow/features/<id>/quality-audit.md"
+      - "_devflow/features/<id>/legacy-impact.md"
+      - "_devflow/features/<id>/regression-watch.md"
+    reads:
+      - "_devflow/features/<id>/requirements.md"
+      - "_devflow/features/<id>/roadmap.md"
+      - "_devflow/features/<id>/test-plan.md"
+    async: true
+
+  - id: startImplementation
+    description: "Begin coding — log to implementation-log.jsonl."
+    writes: ["<source files>", "_devflow/features/<id>/implementation-log.jsonl"]
+    reads: ["_devflow/features/<id>/actions.md"]
+    async: true
+
+  - id: runVerification
+    description: "Execute deterministic check suite (tests, lint, typecheck, coverage, deps)."
+    writes: ["_devflow/features/<id>/qa-report.md"]
+    reads: ["<source files>", "_devflow/features/<id>/implementation-log.jsonl"]
+    async: true
+
+  - id: recordCiPass
+    description: "Record CI verification result in state."
+    writes: [".devflow/state.json"]
+    reads: ["CI workflow run"]
+    async: true
+
+  - id: submitForReview
+    description: "Submit feature for independent gatekeeper review."
+    writes: []
+    reads: ["_devflow/features/<id>/qa-report.md", "_devflow/constitution.md"]
+    async: true
+
+  - id: startAdversarialReview
+    description: "Trigger adversarial review workflow."
+    writes: [".devflow/audits/adversarial-review.md"]
+    reads: ["<source files>", "_devflow/features/<id>/requirements.md", "_devflow/features/<id>/roadmap.md"]
+    async: true
+
+  - id: completeFeature
+    description: "Mark feature as complete — generate release notes."
+    writes:
+      - "_devflow/features/<id>/release-notes.md"
+    reads:
+      - "_devflow/features/<id>/qa-report.md"
+      - "_devflow/features/<id>/implementation-log.jsonl"
+    async: false
+
+  - id: logQaFailure
+    description: "Log QA failure details to feature artifacts."
+    writes: ["_devflow/features/<id>/qa-report.md"]
+    reads: ["<qa review notes>"]
+    async: false
+
+  - id: logAdversarialFailure
+    description: "Log adversarial review failure details."
+    writes: [".devflow/audits/adversarial-review.md"]
+    reads: ["<adversarial review notes>"]
+    async: false
+
+  - id: logVerificationFailure
+    description: "Log verification failure — checks did not pass."
+    writes: ["_devflow/features/<id>/qa-report.md"]
+    reads: ["<verification output>"]
+    async: false
+
+  - id: flagDrift
+    description: "Flag code-spec drift in feature state."
+    writes: [".devflow/state.json"]
+    reads: ["<modified source files>", "_devflow/specs/*"]
+    async: false
+
+  - id: reconcileDrift
+    description: "Reconcile code-spec divergence — update either code or specs."
+    writes: ["<spec files or source files>"]
+    reads: ["_devflow/specs/*", "_devflow/features/<id>/*", "<modified source files>"]
+    async: true
+
+  - id: setBlocked
+    description: "Set blocked state with blocker descriptions."
+    writes: [".devflow/state.json"]
+    reads: []
+    async: false
+
+  - id: clearBlocked
+    description: "Clear blocker markers from state."
+    writes: [".devflow/state.json"]
+    reads: []
+    async: false
+
+  - id: resetFeature
+    description: "Reset feature to empty state — archive current artifacts."
+    writes: []
+    reads: ["_devflow/features/<id>/*"]
+    async: true
+
+  - id: abortFeature
+    description: "Abort feature — archive and mark as abandoned."
+    writes: ["_devflow/features/<id>/abandoned.md"]
+    reads: []
+    async: false
+
+  - id: createActions
+    description: "[LEGACY] Decompose roadmap into atomic actions."
+    writes: ["_devflow/features/<id>/actions.md"]
+    reads: ["_devflow/features/<id>/roadmap.md"]
+    async: true
+
+  - id: startBugfix
+    description: "Create bugfix workspace and begin fix."
+    writes: ["_devflow/bugfixes/<id>/fix-log.md"]
+    reads: ["<bug report or issue>"]
+    async: true
+
+  - id: wontFix
+    description: "Document won't-fix decision."
+    writes: ["_devflow/bugfixes/<id>/wont-fix.md"]
+    reads: ["<bug report>"]
+    async: false
+
+  - id: verifyBugfix
+    description: "Run bugfix verification suite."
+    writes: ["_devflow/bugfixes/<id>/verification-report.md"]
+    reads: ["<source files>"]
+    async: true
+
+  - id: finalizeBugfix
+    description: "Complete bugfix and record resolution."
+    writes: ["_devflow/bugfixes/<id>/resolution.md"]
+    reads: ["_devflow/bugfixes/<id>/verification-report.md"]
+    async: false
+
+  - id: logBugfixFailure
+    description: "Log bugfix verification failure."
+    writes: ["_devflow/bugfixes/<id>/verification-report.md"]
+    reads: ["<verification output>"]
+    async: false
+
+  - id: flagBug
+    description: "Create bugfix entry from bug report."
+    writes: ["_devflow/bugfixes/<id>/bug-report.md"]
+    reads: ["<bug context>"]
+    async: false
+
+# =============================================================================
+# WORKFLOW SUMMARY
+# =============================================================================
+workflows:
+  greenfield:
+    label: "Greenfield"
+    description: "New project from scratch. 15-step feature pipeline."
+    color: "#22c55e"
+    entryStates: ["no-project"]
+    terminalStates: ["feature-done"]
+    stateCount: 15
+    states:
+      - no-project
+      - greenfield-idea
+      - greenfield-specified
+      - feature-empty
+      - feature-requirements
+      - feature-clarification-needed
+      - feature-design
+      - feature-design-reviewed
+      - feature-test-plan
+      - feature-test-plan-ready
+      - feature-pre-code-audit
+      - feature-coding-ready
+      - feature-coding-in-progress
+      - feature-verification
+      - feature-ci-verified
+      - feature-review
+      - feature-adversarial-review
+      - feature-done
+
+  brownfield:
+    label: "Brownfield"
+    description: "Existing codebase — discovery then feature pipeline."
+    color: "#f59e0b"
+    entryStates: ["brownfield-unknown"]
+    terminalStates: ["feature-done"]
+    stateCount: 14
+    states:
+      - brownfield-unknown
+      - discovery-scout
+      - discovery-archaeologist
+      - discovery-detective
+      - discovery-architect
+      - discovery-writer
+      - brownfield-discovered
+      - brownfield-specified
+      - feature-empty
+      - feature-requirements
+      - feature-clarification-needed
+      - feature-design
+      - feature-design-reviewed
+      - feature-test-plan
+      - feature-test-plan-ready
+      - feature-pre-code-audit
+      - feature-coding-ready
+      - feature-coding-in-progress
+      - feature-verification
+      - feature-ci-verified
+      - feature-review
+      - feature-adversarial-review
+      - feature-done
+
+  bugfix:
+    label: "Bugfix"
+    description: "Simplified shortcut workflow for bugs."
+    color: "#ef4444"
+    entryStates: ["bugfix-detected"]
+    terminalStates: ["bugfix-done"]
+    stateCount: 4
+    states:
+      - bugfix-detected
+      - bugfix-implementing
+      - bugfix-verifying
+      - bugfix-done
+
+  qa-loop:
+    label: "QA Loop"
+    description: "Review quality gates — conditional pass/fail transitions."
+    color: "#3b82f6"
+    entryStates: ["feature-review", "feature-adversarial-review"]
+    terminalStates: ["feature-done"]
+    stateCount: 5
+    states:
+      - feature-review
+      - feature-adversarial-review
+      - feature-qa-passed
+      - feature-qa-failed
+      - feature-done
+
+  legacy:
+    label: "Legacy"
+    description: "Deprecated states kept for backward compatibility."
+    color: "#6b7280"
+    entryStates: ["feature-planning"]
+    terminalStates: ["feature-pre-code-audit", "feature-coding-ready", "feature-coding-in-progress"]
+    stateCount: 3
+    states:
+      - feature-planning
+      - feature-planned
+      - feature-todo
+
+# =============================================================================
+# MERMAID STATE DIAGRAM
+# =============================================================================
+# Copy the block below into a Mermaid live editor (https://mermaid.live) or
+# a Markdown renderer supporting Mermaid to visualize the state machine.
+#
+# ```mermaid
+# stateDiagram-v2
+#   direction LR
+#
+#   %% ── Greenfield ──
+#   no-project --> greenfield-idea      : t001: Create Project Idea
+#   no-project --> brownfield-unknown   : t002: Detect Existing Codebase
+#
+#   greenfield-idea --> greenfield-specified : t003: Write Specs
+#   greenfield-idea --> feature-empty       : t004: Skip Specs
+#
+#   greenfield-specified --> feature-empty : t005: Create First Feature
+#
+#   %% ── Brownfield ──
+#   brownfield-unknown --> brownfield-discovered : t006: Install Devflow
+#   brownfield-unknown --> feature-empty          : t007: Skip Discovery
+#   brownfield-unknown --> discovery-scout        : t011: Start Deep Discovery
+#
+#   brownfield-discovered --> brownfield-specified : t008: Write Discovery Specs
+#   brownfield-discovered --> feature-empty        : t009: Skip Discovery Specs
+#
+#   brownfield-specified --> feature-empty : t010: Create Feature
+#
+#   %% ── Deep Discovery Chain ──
+#   discovery-scout --> discovery-archaeologist : t012: Deep Archaeology
+#   discovery-scout --> feature-empty            : t017: Abort Discovery
+#
+#   discovery-archaeologist --> discovery-detective : t013: Behavioral Analysis
+#   discovery-archaeologist --> feature-empty       : t018: Abort Deep Analysis
+#
+#   discovery-detective --> discovery-architect : t014: Architecture Reconstruction
+#   discovery-detective --> feature-empty        : t019: Abort Behavior Analysis
+#
+#   discovery-architect --> discovery-writer  : t015: Consolidate Findings
+#   discovery-architect --> feature-empty      : t020: Skip Consolidation
+#
+#   discovery-writer --> brownfield-specified : t016: Discovery Complete
+#
+#   %% ── Feature Pipeline (shared) ──
+#   feature-empty --> feature-requirements : t021: Write Requirements
+#
+#   feature-requirements --> feature-clarification-needed : t022: Flag Doubts
+#   feature-requirements --> feature-design                : t023: Approve Requirements
+#
+#   feature-clarification-needed --> feature-requirements : t024: Return Clarified
+#   feature-clarification-needed --> feature-design        : t025: Skip to Design
+#
+#   feature-design --> feature-design-reviewed : t026: Submit for Design Review
+#
+#   feature-design-reviewed --> feature-test-plan : t027: Create Test Plan
+#
+#   feature-test-plan --> feature-test-plan-ready : t028: Review Test Plan
+#
+#   feature-test-plan-ready --> feature-pre-code-audit : t029: Run Pre-Code Audit
+#
+#   feature-pre-code-audit --> feature-coding-ready : t030: Pass Audit
+#   feature-pre-code-audit --> feature-empty         : t031: Audit Failed
+#
+#   feature-coding-ready --> feature-coding-in-progress : t032: Start Coding
+#
+#   feature-coding-in-progress --> feature-verification    : t033: Complete Coding
+#   feature-coding-in-progress --> drift-detected          : t034: Detect Drift
+#   feature-coding-in-progress --> blocked                 : t035: Encounter Blocker
+#   feature-coding-in-progress --> bugfix-detected         : t210: Bug Found
+#
+#   feature-verification --> feature-ci-verified         : t036: CI Verifies
+#   feature-verification --> feature-review               : t037: Submit for Review
+#   feature-verification --> feature-coding-in-progress   : t038: Verification Failed
+#
+#   feature-ci-verified --> feature-review : t039: CI Verified
+#
+#   %% ── QA Loop ──
+#   feature-review --> feature-done                 : t040: QA Pass
+#   feature-review --> feature-adversarial-review   : t041: Escalate Adversarial
+#   feature-review --> feature-coding-in-progress   : t042: QA Fail
+#   feature-review --> bugfix-detected              : t211: Bug Found in Review
+#
+#   feature-adversarial-review --> feature-done               : t043: Adversarial Pass
+#   feature-adversarial-review --> feature-coding-in-progress : t044: Adversarial Fail
+#
+#   %% ── Drift & Blocked ──
+#   drift-detected --> blocked                  : t045: Drift Unresolvable
+#   drift-detected --> feature-empty            : t046: Restart from Scratch
+#   drift-detected --> feature-verification     : t047: Drift Reconciled
+#
+#   blocked --> feature-empty                 : t048: Abort Feature
+#   blocked --> feature-coding-in-progress     : t049: Blocker Resolved
+#   blocked --> feature-done                   : t050: Blocker Resolved (Done)
+#
+#   %% ── Completion ──
+#   feature-done --> feature-empty        : t051: Start Next Feature
+#   feature-done --> drift-detected       : t052: Post-Completion Drift
+#   feature-done --> bugfix-detected      : t212: Regression Bug
+#
+#   %% ── Bugfix Workflow ──
+#   bugfix-detected --> bugfix-implementing : t201: Start Fix
+#   bugfix-detected --> bugfix-done         : t202: Won't Fix
+#   bugfix-detected --> feature-empty       : t209: Upgrade to Feature
+#
+#   bugfix-implementing --> bugfix-verifying : t203: Fix Applied
+#   bugfix-implementing --> blocked          : t204: Fix Blocked
+#
+#   bugfix-verifying --> bugfix-done         : t205: Fix Verified
+#   bugfix-verifying --> bugfix-implementing : t206: Fix Failed
+#
+#   bugfix-done --> feature-empty       : t207: Next Task
+#   bugfix-done --> drift-detected      : t208: Bugfix Drift
+#
+#   %% ── Legend ──
+#   note right of no-project
+#     GREENFIELD
+#     Entry: no-project
+#     Terminal: feature-done
+#     15 pipeline states
+#   end note
+#   note right of brownfield-unknown
+#     BROWNFIELD
+#     Entry: brownfield-unknown
+#     5 discovery states
+#   end note
+#   note right of bugfix-detected
+#     BUGFIX
+#     4 simplified states
+#   end note
+#   note right of feature-review
+#     QA LOOP
+#     Conditional edges:
+#     PASS → feature-done
+#     FAIL → coding-in-progress
+#   end note
+# ```
