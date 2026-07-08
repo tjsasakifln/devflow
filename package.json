@@ -1,6 +1,6 @@
 {
   "name": "@tjsasakinpm/devflow",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Local AI coding governance CLI for Claude Code, Cursor and Copilot. Audit AI-generated changes before PR, enforce evidence, run adversarial review and generate PR risk reports.",
   "type": "module",
   "main": "./dist/main.js",

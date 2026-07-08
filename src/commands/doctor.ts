@@ -394,34 +394,42 @@ export async function doctorCommand(
     }
   }
 
-  // ── 14. CLI version vs package.json version ──
+  // ── 14. CLI version — record only; sync check only for Devflow's own repo ──
   {
     const cliVersion = getVersion();
+    let pkgName = "";
     let pkgVersion = "unknown";
     if (await fileExists(pkgPath)) {
       try {
         const { readFile } = await import("node:fs/promises");
         const pkgRaw = await readFile(pkgPath, "utf-8");
         const pkg = JSON.parse(pkgRaw);
+        pkgName = pkg.name || "";
         pkgVersion = pkg.version || "unknown";
       } catch { /* ignore */ }
     }
 
-    if (cliVersion === pkgVersion) {
-      checks.push({ id: 14, name: "CLI version sync", status: "PASS", message: `CLI ${cliVersion} matches package.json ${pkgVersion}` });
+    // Only compare versions when running inside Devflow's own repository
+    if (pkgName === "@tjsasakinpm/devflow") {
+      if (cliVersion === pkgVersion) {
+        checks.push({ id: 14, name: "CLI version sync", status: "PASS", message: `CLI ${cliVersion} matches package.json ${pkgVersion}` });
+      } else {
+        checks.push({
+          id: 14, name: "CLI version sync", status: "FAIL",
+          message: `CLI reports ${cliVersion} but package.json is ${pkgVersion}`,
+          remediation: {
+            title: "Version mismatch",
+            whyMatters: "Audit logs record the CLI version. If it doesn't match package.json, evidence is unreliable.",
+            impact: "Gatekeep and audit logs may report incorrect version, breaking traceability.",
+            suggestedFix: "Ensure getVersion() reads from the correct package.json and rebuild.",
+            minimalExample: "npm run build",
+            severity: "blocking",
+          },
+        });
+      }
     } else {
-      checks.push({
-        id: 14, name: "CLI version sync", status: "FAIL",
-        message: `CLI reports ${cliVersion} but package.json is ${pkgVersion}`,
-        remediation: {
-          title: "Version mismatch",
-          whyMatters: "Audit logs record the CLI version. If it doesn't match package.json, evidence is unreliable.",
-          impact: "Gatekeep and audit logs may report incorrect version, breaking traceability.",
-          suggestedFix: "Ensure getVersion() reads from the correct package.json and that all hardcoded versions are removed.",
-          minimalExample: "Check src/kernel/utils/version.ts path resolution and rebuild.",
-          severity: "blocking",
-        },
-      });
+      // External project: just record CLI version, don't compare
+      checks.push({ id: 14, name: "CLI version", status: "INFO", message: `Devflow CLI ${cliVersion} (project: ${pkgName || path.basename(rootPath)} ${pkgVersion})` });
     }
   }
 

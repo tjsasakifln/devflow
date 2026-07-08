@@ -16,8 +16,8 @@ interface InitPlan {
   devArtifactsDir: string;
   devflowMdPath: string;
   claudeMdPath: string;
-  settingsPath: string;
-  claudeDir: string;
+  skillPath: string;
+  skillDir: string;
 }
 
 function planPaths(rootPath: string): InitPlan {
@@ -26,8 +26,8 @@ function planPaths(rootPath: string): InitPlan {
     devArtifactsDir: path.join(rootPath, "_devflow"),
     devflowMdPath: path.join(rootPath, "DEVFLOW.md"),
     claudeMdPath: path.join(rootPath, "CLAUDE.md"),
-    settingsPath: path.join(rootPath, ".claude", "settings.json"),
-    claudeDir: path.join(rootPath, ".claude"),
+    skillDir: path.join(rootPath, ".claude", "skills", "devflow"),
+    skillPath: path.join(rootPath, ".claude", "skills", "devflow", "SKILL.md"),
   };
 }
 
@@ -102,15 +102,19 @@ export async function initCommand(cwd: string): Promise<void> {
     process.exit(1);
   }
 
-  // Validate slash command config (in-memory)
+  // Validate Devflow skill generation (in-memory)
   try {
-    const { generateSlashCommandConfig } = await import(
+    const { generateDevflowSkill } = await import(
       "../integration/claude-code.js"
     );
-    JSON.parse(generateSlashCommandConfig()); // verify valid JSON
+    const skillContent = generateDevflowSkill();
+    // Verify it's non-empty markdown with frontmatter
+    if (!skillContent || !skillContent.startsWith("---")) {
+      throw new Error("Skill content is empty or missing frontmatter");
+    }
   } catch (err) {
     console.error(
-      pc.red("✖ Failed to generate slash command config: ") +
+      pc.red("✖ Failed to generate Devflow skill: ") +
         (err instanceof Error ? err.message : String(err))
     );
     process.exit(1);
@@ -211,22 +215,22 @@ export async function initCommand(cwd: string): Promise<void> {
       createdPaths.push(planned.claudeMdPath);
     }
 
-    // Step 7: Generate .claude/settings.json slash command config
-    console.log(pc.blue("→") + " Configuring /devflow slash command...");
+    // Step 7: Generate .claude/skills/devflow/SKILL.md
+    console.log(pc.blue("→") + " Installing Claude Code skill: .claude/skills/devflow/SKILL.md");
     const { ensureDir } = await import("../utils/fs.js");
-    await ensureDir(planned.claudeDir);
-    createdPaths.push(planned.claudeDir);
+    await ensureDir(planned.skillDir);
+    createdPaths.push(planned.skillDir);
 
-    const { generateSlashCommandConfig } = await import(
+    const { generateDevflowSkill } = await import(
       "../integration/claude-code.js"
     );
-    const settingsContent = generateSlashCommandConfig();
+    const skillContent = generateDevflowSkill();
     await manager.safeWrite(
-      planned.settingsPath,
-      settingsContent,
-      ".claude/settings.json"
+      planned.skillPath,
+      skillContent,
+      ".claude/skills/devflow/SKILL.md"
     );
-    createdPaths.push(planned.settingsPath);
+    createdPaths.push(planned.skillPath);
 
     // Summary
     console.log(pc.green("\n✅ Devflow initialized successfully!\n"));
@@ -235,7 +239,7 @@ export async function initCommand(cwd: string): Promise<void> {
     console.log("  _devflow/          — Output artifacts");
     console.log("  DEVFLOW.md         — Project cockpit");
     console.log("  CLAUDE.md          — Devflow integration (appended)");
-    console.log("  .claude/settings.json — /devflow slash command");
+    console.log("  .claude/skills/devflow/SKILL.md — Devflow skill for Claude Code");
     console.log();
     console.log(pc.bold("Detected state: ") + pc.cyan(stateResult.currentState));
     console.log(pc.bold("Confidence:     ") + stateResult.confidence);

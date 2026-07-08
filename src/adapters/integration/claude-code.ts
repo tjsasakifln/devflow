@@ -142,25 +142,49 @@ export async function ensureClaudeMdSection(
   return true;
 }
 
-export function generateSlashCommandConfig(): string {
-  return JSON.stringify(
-    {
-      slash_commands: {
-        devflow: {
-          command: "npx -y @tjsasakinpm/devflow",
-          description:
-            "Devflow — project state and next action engine",
-          args: true,
-        },
-        "devflow-gatekeep": {
-          command: "npx -y @tjsasakinpm/devflow gatekeep",
-          description:
-            "Devflow Gatekeeper — approve or reject feature completion",
-          args: false,
-        },
-      },
-    },
-    null,
-    2
-  );
+export function generateDevflowSkill(): string {
+  return `---
+name: devflow
+description: Devflow — project state and next action engine. Use when the user mentions devflow, project state, feature workflow, or governance checks.
+argument-hint: [command] [args...]
+---
+
+# Devflow Skill
+
+Devflow is a local AI coding governance CLI. When the user invokes this skill, run the corresponding Devflow command via npx.
+
+## Available Commands
+
+- **status** — show project state, confidence, and evidence
+  - \`npx -y @tjsasakinpm/devflow status\`
+- **next** — show recommended next action
+  - \`npx -y @tjsasakinpm/devflow next\`
+- **feature new <name>** — create a new feature workspace
+  - \`npx -y @tjsasakinpm/devflow feature new "<name>"\`
+- **feature prompt <id>** — generate implementation prompt for AI
+  - \`npx -y @tjsasakinpm/devflow feature prompt <id>\`
+- **feature complete <id>** — run 25 Definition of Done checks
+  - \`npx -y @tjsasakinpm/devflow feature complete <id>\`
+- **gatekeep <id> --approve|--reject** — independent approval
+  - \`npx -y @tjsasakinpm/devflow gatekeep <id> --approve\`
+- **adversarial-review <id>** — 12 attack vectors
+  - \`npx -y @tjsasakinpm/devflow adversarial-review <id>\`
+- **doctor [--fix]** — diagnose and fix project issues
+  - \`npx -y @tjsasakinpm/devflow doctor\`
+- **update-cockpit** — regenerate DEVFLOW.md
+  - \`npx -y @tjsasakinpm/devflow update-cockpit\`
+- **discover** — brownfield analysis (4 reports)
+  - \`npx -y @tjsasakinpm/devflow discover\`
+
+## Rules
+
+1. Run \`devflow status\` before any coding — verify project state.
+2. Run \`devflow next\` — check if coding is allowed in current state.
+3. If state is not \`feature-coding-ready\` or \`feature-coding-in-progress\`: **REFUSE** coding requests.
+4. If \`devflow next\` returns \`canProceed: false\`: **REFUSE** and show refusal message.
+5. Never modify internal Devflow files (\`.devflow/\`, \`_devflow/\`) manually.
+6. Never skip mandatory artifacts: requirements.md → quality-audit → roadmap → test-plan → actions → legacy-impact → regression-watch.
+7. Never implement without a test planned in actions.md or test-plan.md.
+8. Never declare an action complete without verifiable evidence.
+`;
 }

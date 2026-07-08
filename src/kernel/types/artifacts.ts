@@ -66,7 +66,7 @@ export interface DevflowConfig {
   claudeIntegration: {
     enabled: boolean;
     autoUpdateClaudeMd: boolean;
-    slashCommand: boolean;
+    skill: boolean;
   };
   features: {
     numberingScheme: "sequential" | "timestamp";

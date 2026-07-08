@@ -13,7 +13,7 @@ export const DEFAULTS: DevflowConfig = {
   claudeIntegration: {
     enabled: true,
     autoUpdateClaudeMd: true,
-    slashCommand: true,
+    skill: true,
   },
   features: {
     numberingScheme: "sequential",
