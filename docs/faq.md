@@ -54,7 +54,7 @@ Yes. Solo-hardened mode (`devflow config set reviewMode solo-hardened`) allows s
 
 ### 9. Does Devflow require API keys?
 
-No. Devflow requires no API keys, no SaaS accounts, and no cloud services. All checks are deterministic and run locally. Optional AI-powered features planned for future releases will be configurable and opt-in, with clear documentation about what data would be sent and how to disable it.
+No. Devflow requires no API keys, no SaaS accounts, and no cloud services. All checks are deterministic and run locally. AI-powered features (`ai-init`, `adversarial-review-ai`, `actions-generate`) are available but fully opt-in — they require explicit configuration and a model provider (Anthropic, OpenAI, or Ollama for fully local). No data is sent to any service unless you configure it to do so.
 
 ---
 
@@ -78,7 +78,7 @@ No. Devflow catches dangerous patterns and governance gaps — missing tests, mi
 
 ### 13. Can I customize the checks?
 
-Yes. The `riskTolerance` setting (relaxed, moderate, strict) controls which gates are advisory versus blocking. The `executionMode` setting controls CI requirements. The `.devflowignore` file supports exclusions. The constitution (C1-C12) is defined in `.devflow/constitution.md` and can be customized per project. Stack adapters can be extended with project-specific checks. See `devflow config set --help` for available options.
+Yes. The `riskTolerance` setting (relaxed, moderate, strict) controls which gates are advisory versus blocking. The `executionMode` setting controls CI requirements. The `.devflowignore` file supports exclusions. The constitution is defined in `.aiox-core/constitution.md` and can be customized per project. Stack adapters can be extended with project-specific checks. See `devflow config set --help` for available options.
 
 ---
 
@@ -90,7 +90,7 @@ Yes. Devflow is released under the MIT license. The source code is available at 
 
 ### 15. How do I contribute?
 
-See the CONTRIBUTING.md file in the repository root. The project is especially looking for contributions in three areas: **stack adapters** (adding governance checks for additional languages and frameworks), **integrations** (CI platforms beyond GitHub Actions, editor plugins, git hook distribution), and **documentation** (guides, use cases, translations). Pull requests and issues are welcome.
+See the CONTRIBUTING.md file in the repository root. The project is especially looking for contributions in: **stack adapters** (adding governance checks for additional languages), **integrations** (CI platforms beyond GitHub Actions, editor plugins), **orchestration patterns** (new multi-agent patterns in `src/kernel/orchestration/`), **brownfield discovery** (analysis phases for new frameworks), and **documentation** (guides, use cases, translations). Pull requests and issues are welcome.
 
 ---
 

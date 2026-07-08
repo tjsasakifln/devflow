@@ -130,8 +130,11 @@ chore: bump commander to 12.1.0
 - **Integrations** (`src/adapters/integration/`): Add support for additional AI coding tools beyond Claude Code.
 - **Documentation**: Improve how-to guides, use-case pages, and comparison docs.
 - **Examples**: Add real-world example workflows under `examples/`.
-- **Security scanning**: Extend dangerous pattern detection in `src/core/audit-engine.ts`.
-- **Monorepo support**: Enhance `src/adapters/git/diff-model.ts` to detect package-level changes.
+- **Security scanning**: Extend dangerous pattern detection in `src/adapters/stacks/typescript/dangerous-patterns.ts` and stack adapters.
+- **Monorepo support**: Enhance `src/kernel/detection/stack.ts` to detect package-level changes.
+- **Workflow engine**: Extend `src/kernel/workflow/engine.ts` with new task types and workflow patterns.
+- **Multi-agent orchestration**: Contribute new orchestration patterns in `src/kernel/orchestration/`.
+- **Brownfield discovery**: Add new analysis phases in `src/kernel/discovery/`.
 - **Test coverage**: Help us reach 90%+ coverage across core modules.
 
 ---

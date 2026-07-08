@@ -1,149 +1,77 @@
-# Devflow Readiness Checklist
+# Devflow Readiness Checklist — v1.0.0
 
-> **Branch:** `fix/align-implementation-to-promise`
-> **Date:** 2026-07-06
-> **Purpose:** Verifiable acceptance criteria for the 15 corrections aligning Devflow implementation to its public promise.
+> **Branch:** `main`
+> **Date:** 2026-07-08
+> **Purpose:** Verifiable acceptance criteria for the v1.0.0 release — 15 stories, 4 epics, kernel consolidation + workflow engine + multi-agent orchestration + PREVIEW commands.
 
-## Corrective Commits & Verification
+## Epic Completion Verification
 
-Each entry below maps to a commit on the `fix/align-implementation-to-promise` branch. Check each box by running the verification command.
+### Epic 1: Kernel Consolidation
+- [x] 1.1 — consolidate-validators (loop, structural, semantic, OO)
+- [x] 1.2 — consolidate-artifacts (templates, tool-configs, paths, validator)
+- [x] 1.3 — consolidate-constitution (checker, loader, defaults)
+- [x] 1.4 — consolidate-cockpit (generator, sections)
 
-### 1. CI Simplification
+### Epic 2: Universal Workflow Engine
+- [x] 2.1 — design-workflow-state-machine (transitions, states, types)
+- [x] 2.2 — implement-workflow-engine-core (engine.ts, persistence, loader)
+- [x] 2.3 — brownfield-discovery-workflow (scout, archaeologist, detective, architect, writer, schema-extractor, orchestrator)
+- [x] 2.4 — agent-driven-development-workflow (agent-delegation, authority-enforcer, handoff, agent-spawner, parallel-analysis-integration)
 
-- [ ] `npm ci` succeeds (only installs declared devDeps)
-- [ ] `npm run build` succeeds
-- [ ] `npm run typecheck` succeeds (tsc --noEmit)
-- [ ] `npm test` succeeds (all 73 tests pass)
-- [ ] `npm run test:coverage` succeeds (vitest + @vitest/coverage-v8)
-- [ ] CI workflow references only installed tools or advisory steps
-- [ ] CI does not reference `.devflow/` paths (uses versioned `src/kernel/artifacts/tool-configs/`)
+### Epic 3: Multi-Agent Orchestration
+- [x] 3.1 — parallel-agent-spawner (fan-out N agents, timeout, isolation)
+- [x] 3.2 — adversarial-verify-pattern (N skeptics, majority-vote refutation)
+- [x] 3.3 — completeness-critic-pattern ("what's missing?" agent, loop-until-dry)
 
-### 2. Version Sync
+### Epic 4: PREVIEW Commands & Quality
+- [x] 4.1 — preview-commands-batch-1 (analyze, trace, promote)
+- [x] 4.2 — preview-commands-batch-2 (drift-check, design-review, tests-review)
+- [x] 4.3 — preview-commands-batch-3 (requirements-audit, ai-init, actions-generate)
+- [x] 4.4 — quality-hardening-v1 (coverage, changelog, 0 type errors, 0 vulnerabilities)
 
-- [ ] `node dist/main.js --version` prints `0.2.1` (matches package.json)
-- [ ] `grep -r '"0.1.0"' src/` returns no results (no hardcoded old versions)
-- [ ] Gatekeep log entries contain `"devflowVersion":"0.2.1"`
-
-### 3. Feature Prompt Blocks Premature Coding
-
-- [ ] `devflow feature prompt <id>` refuses when state < feature-coding-ready
-- [ ] Refusal message shows: current state, required progression, `devflow next --diagnose`
-- [ ] Refusal message shows: `--preview` flag alternative
-- [ ] `devflow feature prompt <id> --preview` generates prompt with PREVIEW warning
-- [ ] Preview saved file is named `implementation-prompt-PREVIEW.md`
-
-### 4. DoD Check 25 — Real Integrity Gate
-
-- [ ] Check 25 is `blocking: true` (not decorative)
-- [ ] Check 25 verifies all blocking checks 1-24 passed
-- [ ] Check 25 verifies implementation log matches actions completion
-- [ ] Check 25 reports adversarial review and gatekeep log status
-
-### 5. Stack-Adaptive Pipeline Guards
-
-- [ ] Pipeline gates 12/13 use StackProfile + package.json scripts
-- [ ] Non-TypeScript stacks get diagnostic messages, not errors
-- [ ] JS projects: typecheck gate is non-blocking
-- [ ] Go/Rust projects: compiler handles type checking natively
-
-### 6. Git Hooks Opt-In
-
-- [ ] `templates/hooks/pre-commit` exists and is versioned
-- [ ] `templates/hooks/pre-push` exists and is versioned
-- [ ] `devflow install` offers hook installation (opt-in)
-- [ ] Hooks block commits to main/master
-- [ ] Hooks warn when DEVFLOW.md says CANNOT CODE
-- [ ] `hooksEnabled: true` is set in config when hooks are installed
-
-### 7. Actor Field in Log Example
-
-- [ ] Generated implementation prompt JSON example includes `"actor"` field
-- [ ] Example: `{"timestamp":"...","actor":"...","actionId":"T001",...}`
-
-### 8. Gatekeep Log Validation (strict/release)
-
-- [ ] In strict/release mode: gatekeep validates log entries have required fields
-- [ ] Missing timestamp/actor/actionId/status triggers refusal
-- [ ] Invalid JSON lines are reported with line numbers
-- [ ] Empty log triggers refusal in strict/release
-- [ ] In local mode: only warns (no refusal)
-
-### 9. Doctor Self-Diagnosis
-
-- [ ] `devflow doctor` shows 16 checks (was 12)
-- [ ] Check 13: detects CI referencing gitignored .devflow/
-- [ ] Check 14: detects CLI version ≠ package.json version
-- [ ] Check 15: detects CI tools not in devDependencies
-- [ ] Check 16: reports .devflow/ gitignore status
-
-### 10. README Maturity Alignment
-
-- [ ] README explicitly states enforcement requires voluntary CLI execution
-- [ ] README references "does not" section from intro paragraph
-- [ ] PREVIEW section labeled "placeholder stubs, no real execution"
-- [ ] README tests (`test/unit/readme-validation.test.ts`) pass
-
-### 11. Adversarial Review Per-Feature
-
-- [ ] `devflow adversarial-review <id>` writes to `.devflow/audits/<id>/adversarial-review.md`
-- [ ] feature-complete check 21 checks per-feature path
-- [ ] feature-complete check 19 (solo-hardened) checks per-feature path
-- [ ] gatekeep solo-hardened check validates per-feature path
-- [ ] Old global path `.devflow/audits/adversarial-review.md` no longer used
-
-### 12. Heuristic Semantic Labels
-
-- [ ] DoD check 23 description says "Heuristic semantic quality"
-- [ ] Pipeline gate 15 description says "Heuristic semantic quality check"
-- [ ] Evidence strings say "Heuristic quality score" not "Semantic quality score"
-
-### 13. End-to-End Tests
-
-- [ ] `test/e2e/flows.test.ts` exists with 4 test cases
-- [ ] Greenfield test: init → inspect → create feature → fill artifacts → verify
-- [ ] Brownfield test: init with 12+ files → detect → verify cockpit
-- [ ] Invalid state tests: missing artifacts → detection works, empty dir → no crash
-- [ ] All 4 e2e tests pass in `npm test`
-
-### 14. Deprecated Shim Tests
-
-- [ ] `test/unit/deprecated-imports.test.ts` exists with 17 test cases
-- [ ] All deprecated re-export paths resolve correctly
-- [ ] Key exports (detectState, ConfigManager, ArtifactManager, etc.) are accessible
-
-### 15. Scaffold + Readiness Checklist
-
-- [ ] `devflow init` copies tool configs to `.devflow/`
-- [ ] `docs/readiness-checklist.md` exists (this file)
-- [ ] Tool configs included in npm package (`src/kernel/artifacts/tool-configs/`)
-
-## Final Verification
-
-Run these commands on the `fix/align-implementation-to-promise` branch:
+## Core Health Verification
 
 ```bash
 # Core health
-npm ci
-npm run build
-npm run typecheck
-npm test
-npm run test:coverage
+npm ci                        # clean install
+npm run build                 # build succeeds
+npm run typecheck             # tsc --noEmit, 0 errors
+npm test                      # 813 tests pass
+npm run test:coverage         # coverage >= 80%
 
 # Version check
-node dist/main.js --version    # must print 0.2.1
+node dist/main.js --version   # must print 1.0.0
 
 # Doctor check
-node dist/main.js doctor        # must show 16 checks
+node dist/main.js doctor      # must show all checks
 
-# E2E tests
-npx vitest run test/e2e/        # must pass 4/4
-
-# Deprecated shim tests
-npx vitest run test/unit/deprecated-imports.test.ts  # must pass 17/17
+# Stable commands (ex-PREVIEW)
+node dist/main.js analyze --help
+node dist/main.js trace --help
+node dist/main.js promote --help
+node dist/main.js drift-check --help
+node dist/main.js design-review --help
+node dist/main.js tests-review --help
+node dist/main.js requirements-audit --help
+node dist/main.js ai-init --help
+node dist/main.js actions-generate --help
 
 # No hardcoded old versions
-! grep -rq '"0.1.0"' src/
+! grep -rq '"0\.' src/
 ```
+
+## Key Metrics (v1.0.0)
+
+| Metric | Value |
+|--------|-------|
+| Tests | 813 |
+| Type errors | 0 |
+| Vulnerabilities (npm audit) | 0 |
+| Status check latency | < 2s |
+| Source files | ~170 .ts |
+| Commands | 25+ |
+| Stories completed | 15 |
+| Epics completed | 4 |
 
 ## Risks Not Addressed
 
@@ -152,6 +80,6 @@ These items remain as known limitations:
 1. **No sandbox enforcement** — Devflow cannot prevent a user from editing files directly or using `git commit --no-verify`
 2. **Heuristic-only semantic checks** — Content quality detection is pattern-based, not AI-powered
 3. **No external policy engine** — Constitution rules are advisory; there is no server-side enforcement
-4. **PREVIEW commands** — 9 commands remain as stubs with no real logic
-5. **EXPERIMENTAL commands** — `discover` and `eval run` have partial implementation
-6. **Windows compatibility** — Not tested on Windows; clipboard and file permissions may differ
+4. **Windows compatibility** — Not tested on Windows; clipboard and file permissions may differ
+5. **LangGraph pipeline** — Infrastructure present in `src/intelligence/` but AI-assisted review not yet productionized
+6. **Monorepo support** — Partial; enhanced package-level detection planned

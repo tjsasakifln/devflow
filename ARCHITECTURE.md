@@ -1,181 +1,219 @@
-# Devflow Architecture -- Local AI Coding Governance
+# Devflow Architecture — v1.0.0
 
-> This document describes the architecture after the Cycle 1 refactor, in which business logic was extracted from command wrappers into a layered core/adapters/renderers structure.
+> Local AI Coding Governance with workflow engine, multi-agent orchestration, and brownfield discovery pipeline.
 
 ---
 
 ## 1. Overview
 
-Devflow is a local-first CLI tool that governs AI-generated code through auditable evidence, risk reports, and engineering guardrails. The architecture follows a layered pipeline:
+Devflow is a local-first CLI tool that governs AI-generated code through auditable evidence, risk reports, and engineering guardrails. Version 1.0.0 consolidates the kernel, introduces a universal workflow engine, multi-agent orchestration patterns, and stabilizes 9 PREVIEW commands.
+
+The architecture follows a layered pipeline:
 
 ```
-CLI (src/cli/)            -- parameter parsing, user interaction
+CLI (src/cli/)            — parameter parsing, user interaction
   |
   v
-Core (src/core/)          -- business logic, risk engine, policy
+Commands (src/commands/)  — feature workflows, adversarial review, discovery, analysis
   |
   v
-Adapters (src/adapters/)  -- git, stacks, integrations
+Core (src/core/)          — audit engine, policy, evidence, DoD engine
   |
   v
-Renderers (src/renderers/) -- markdown, HTML, JSON output
+Adapters (src/adapters/)  — git, stacks, integrations, models, process, crew
   |
   v
-Kernel (src/kernel/)      -- state machine, evidence, guards, types
+Renderers (src/renderers/) — markdown, HTML, JSON, badges
+  |
+  v
+Kernel (src/kernel/)      — state machine, workflow engine, orchestration, discovery,
+                             validators, evidence, guards, constitution, cockpit, config
 ```
 
-Each layer has a single responsibility. Dependencies flow downward: CLI depends on Core, Core depends on Adapters and Renderers, and all layers depend on Kernel types and utilities.
+Each layer has a single responsibility. Dependencies flow downward: CLI depends on Commands, Commands depend on Core and Kernel, Core depends on Adapters and Renderers, all layers depend on Kernel types and utilities.
 
 ---
 
 ## 2. Layer Diagram
 
 ```
-  +------------------------------------------------------------+
-  |                    CLI Layer (src/cli/)                     |
-  |  audit.ts, review-pr.ts, index.ts (command registration)   |
-  |  Thin wrappers. No business logic. Imports from commands/  |
-  |  or calls core functions directly.                         |
-  +----------------------------+-------------------------------+
-                               |
-                               v
-  +------------------------------------------------------------+
-  |                   Core Layer (src/core/)                    |
-  |  audit-engine.ts    -- main audit logic                    |
-  |  report-model.ts    -- unified AuditReport type            |
-  |  policy-engine.ts   -- risk tolerance, verdict computation |
-  |  evidence-engine.ts -- evidence gathering and validation   |
-  |  dod-engine.ts      -- 25 Definition of Done checks       |
-  +----------------------------+-------------------------------+
-                               |
-              +----------------+----------------+
-              |                |                |
-              v                v                v
+  +--------------------------------------------------------------------+
+  |                    CLI Layer (src/cli/)                             |
+  |  index.ts (command registration), audit.ts, review-pr.ts           |
+  |  Thin wrappers. No business logic. Delegates to commands/ or core. |
+  +--------------------------------+-----------------------------------+
+                                   |
+                                   v
+  +--------------------------------------------------------------------+
+  |                 Commands Layer (src/commands/)                      |
+  |  feature.ts, gatekeep.ts, discover.ts, next.ts, status.ts          |
+  |  analyze.ts, trace.ts, promote.ts, drift-check.ts                  |
+  |  design-review.ts, tests-review.ts, requirements-audit.ts          |
+  |  ai-init.ts, adversarial-review-ai.ts, actions-generate.ts         |
+  |  adversarial-review.ts, feature-complete.ts, doctor.ts, init.ts    |
+  +--------------------------------+-----------------------------------+
+                                   |
+                                   v
+  +--------------------------------------------------------------------+
+  |                     Core Layer (src/core/)                          |
+  |  audit-engine.ts    — main audit logic                             |
+  |  report-model.ts    — unified AuditReport type                     |
+  |  policy-engine.ts   — risk tolerance, verdict computation          |
+  |  evidence-engine.ts — evidence gathering and validation            |
+  |  dod-engine.ts      — 25 Definition of Done checks                |
+  +--------------------------------+-----------------------------------+
+                                   |
+              +-------------------+-------------------+
+              |                   |                   |
+              v                   v                   v
   +-------------+   +---------------+   +---------------+
-  |  Adapters   |   |   Renderers   |   |   Commands    |
+  |  Adapters   |   |   Renderers   |   |   Intelligence|
   | (src/       |   | (src/         |   | (src/         |
-  |  adapters/) |   |  renderers/)  |   |  commands/)   |
-  |  git/       |   |  markdown.ts  |   |  init.ts      |
-  |  stacks/    |   |  html.ts      |   |  install.ts   |
-  |  integration|   |  json.ts      |   |  gatekeep.ts  |
-  |  models/    |   |  badges.ts    |   |  ...          |
-  +------+------+   +-------+-------+   +-------+-------+
-         |                   |                   |
-         +-------------------+-------------------+
-                             |
-                             v
-  +------------------------------------------------------------+
-  |                   Kernel Layer (src/kernel/)                |
-  |  state/     -- state machine, transitions                  |
-  |  evidence/  -- confidence scoring, evidence gathering      |
-  |  guards/    -- pre-action and refusal guards               |
-  |  types/     -- shared TypeScript types                     |
-  |  utils/     -- fs, git, hash, logger, version, markdown    |
-  |  dod/       -- check registry and individual checks        |
-  |  config/    -- AI config, default config, config manager   |
-  |  validators/ -- loop, structural, semantic, OO validators  |
-  +------------------------------------------------------------+
+  |  adapters/) |   |  renderers/)  |   |  intelligence/)|
+  |  git/       |   |  markdown.ts  |   |  langgraph/   |
+  |  stacks/    |   |  html.ts      |   |  rag/         |
+  |  integration|   |  json.ts      |   |  tools/       |
+  |  models/    |   |  badges.ts    |   +---------------+
+  |  process/   |   +-------+-------+
+  |  project/   |           |
+  |  crew/      |           |
+  +------+------+           |
+         |                  |
+         +------------------+-------------------+
+                            |                   |
+                            v                   v
+  +--------------------------------------------------------------------+
+  |                    Kernel Layer (src/kernel/)                       |
+  |                                                                     |
+  |  ┌─ workflow/      — engine, agent-delegation, authority-enforcer, |
+  |  │                   handoff, loader, persistence, agent-spawner   |
+  |  ├─ orchestration/ — parallel-spawner, adversarial-verify,         |
+  |  │                   completeness-critic, agent-runner,             |
+  |  │                   result-merger, dimensions                     |
+  |  ├─ discovery/     — scout, archaeologist, detective, architect,   |
+  |  │                   writer, schema-extractor, orchestrator        |
+  |  ├─ state/         — state machine, detector, transitions          |
+  |  ├─ evidence/      — confidence scoring, gatherer, schema          |
+  |  ├─ guards/        — pre-action guards, refusal, pipeline          |
+  |  ├─ validators/    — loop, structural, semantic, OO validators     |
+  |  ├─ dod/           — check registry, 8 individual DoD checks       |
+  |  ├─ constitution/  — checker, loader, defaults                     |
+  |  ├─ audit/         — chain-verifier, generator                     |
+  |  ├─ cockpit/       — generator, sections                           |
+  |  ├─ config/        — AI config, defaults, config manager           |
+  |  ├─ artifacts/     — manager, validator, paths, templates          |
+  |  ├─ actors/        — actor schema                                  |
+  |  ├─ ci/            — CI verifier                                   |
+  |  ├─ detection/     — stack detection                               |
+  |  ├─ errors/        — error types, remediation                      |
+  |  ├─ types/         — shared TypeScript types                       |
+  |  └─ utils/         — fs, git, hash, logger, version, markdown,     |
+  |                      prompts, cli-resolver                         |
+  +--------------------------------------------------------------------+
 ```
 
 ---
 
 ## 3. Key Modules
 
-### `src/core/audit-engine.ts`
+### 3.1 Workflow Engine (`src/kernel/workflow/`)
 
-The zero-friction entry point for auditing AI-generated changes. It:
+The universal workflow engine (v1.0.0) provides:
 
-1. Captures the git context (branch, commit SHA, working tree state).
-2. Detects the project's technology stack (TypeScript, Python, Go, Rust).
-3. Runs `git diff` against the base branch (default: `main`) to collect changed files.
-4. Filters excluded files (build artifacts, lock files, generated code).
-5. Scans each changed file for dangerous patterns (eval, hardcoded secrets, empty catches, debug flags).
-6. Attempts feature detection (requirements, roadmap, test plan, adversarial review, gatekeep).
-7. Collects evidence (test framework, type checker, linter, CI configuration).
-8. Computes a severity matrix and verdict (PASS / WARN / FAIL / BLOCKED).
-9. Returns a fully populated `AuditReport` for the renderers.
+- **engine.ts** — Core state machine execution with task loading, phase progression, and agent-driven development workflows
+- **agent-delegation.ts** — Agent authority matrix; enforces which agent owns which operation
+- **authority-enforcer.ts** — Constitutional enforcement of agent boundaries; blocks unauthorized operations
+- **agent-spawner.ts** — Spawns sub-agents for parallel task execution with isolation
+- **handoff.ts** — Agent-to-agent context handoff protocol with compaction
+- **loader.ts** — Task and workflow definition loading from `.aiox-core/development/tasks/`
+- **persistence.ts** — Workflow state persistence and resume capability
+- **parallel-analysis-integration.ts** — Integrates parallel analysis results into workflow artifacts
+- **types.ts** — Workflow type definitions (WorkflowState, TaskDefinition, AgentRole, etc.)
 
-### `src/core/report-model.ts`
+### 3.2 Multi-Agent Orchestration (`src/kernel/orchestration/`)
 
-Single source of truth for all audit and review report shapes. Exports TypeScript interfaces for:
+Production-grade multi-agent patterns (v1.0.0):
 
-- `AuditReport` -- the complete report object consumed by all renderers
-- `AuditOptions` -- parameters accepted by the audit engine
-- `ChangedFile`, `Risk`, `Evidence`, `SeverityMatrix`, `AuditMetadata`
-- Type unions: `Severity`, `Verdict`, `RiskCategory`, `EvidenceType`
+- **parallel-spawner.ts** — Spawns N agents concurrently for fan-out analysis, review, or implementation
+- **adversarial-verify.ts** — Adversarial review with N independent skeptics per finding; majority-vote refutation
+- **completeness-critic.ts** — "What's missing?" agent that identifies gaps and triggers additional rounds
+- **agent-runner.ts** — Unified agent execution with timeout, retry, and isolation
+- **result-merger.ts** — Deduplicates and merges results from parallel agent runs
+- **dimensions.ts** — Review dimension definitions (correctness, security, performance, etc.)
+- **types.ts** — Orchestration type definitions
 
-### `src/core/policy-engine.ts`
+### 3.3 Brownfield Discovery (`src/kernel/discovery/`)
 
-Computes verdicts based on risk tolerance and execution mode:
+Automated legacy system analysis pipeline (v1.0.0):
 
-- **relaxed**: Self-approval OK. Coverage and lint are advisory.
-- **moderate** (default): Standard gates. Team review expected.
-- **strict**: All gates blocking. CI required. Unknown actors blocked.
+- **orchestrator.ts** — 10-phase brownfield discovery coordinator
+- **scout.ts** — Surface mapping: folder structure, languages, frameworks, entry points
+- **archaeologist.ts** — Deep module analysis: algorithms, control flow, data structures
+- **detective.ts** — Business knowledge extraction: rules, state machines, permissions, ADRs
+- **architect.ts** — C4 diagrams, ERD, integration maps, Spec Impact Matrix
+- **writer.ts** — Executable specs as per-folder contracts (requirements.md, design.md, tasks.md)
+- **schema-extractor.ts** — Database schema extraction from DDL, migrations, ORM models
 
-Handles severity escalation based on tolerance -- a LOW finding in strict mode may block the verdict that would pass in relaxed mode.
+### 3.4 Commands (`src/commands/`)
 
-### `src/core/evidence-engine.ts`
+All 25+ commands live here:
 
-Gathers and validates evidence from the project. Evidence types include:
+| Category | Commands |
+|----------|----------|
+| **Feature Workflow** | feature.ts, feature-prompt.ts, feature-complete.ts, gatekeep.ts |
+| **Discovery** | discover.ts, index-project.ts, analyze.ts, trace.ts |
+| **Quality** | design-review.ts, tests-review.ts, requirements-audit.ts, drift-check.ts |
+| **Adversarial** | adversarial-review.ts, adversarial-review-ai.ts |
+| **Operations** | init.ts, install.ts, doctor.ts, status.ts, next.ts, update-cockpit.ts |
+| **Agent** | ai-init.ts, actions-generate.ts, promote.ts |
+| **CI** | audit.ts (via cli/audit.ts), review-pr.ts (via cli/review-pr.ts), eval-run.ts |
 
-- Artifact presence (requirements.md, roadmap.md, test-plan.md)
-- Tool detection (test framework, type checker, linter, CI configuration)
-- Process evidence (implementation log, adversarial review, gatekeep approval)
+### 3.5 Core Engine (`src/core/`)
 
-### `src/core/dod-engine.ts`
+- **audit-engine.ts** — Zero-friction audit entry point. Captures git context, detects stack, scans changed files for dangerous patterns, collects evidence, computes severity matrix and verdict.
+- **report-model.ts** — Single source of truth for AuditReport, AuditOptions, ChangedFile, Risk, Evidence, SeverityMatrix types.
+- **policy-engine.ts** — Verdict computation based on risk tolerance (relaxed/moderate/strict) and execution mode (local/experimental/strict/release).
+- **evidence-engine.ts** — Gathers and validates evidence: artifact presence, tool detection, process evidence.
+- **dod-engine.ts** — 25 Definition of Done checks: requirements, architecture, actions, constitution, tests, typecheck, lint, coverage.
 
-Runs 25 Definition of Done checks covering requirements, architecture, actions, constitution, tests, typecheck, lint, and coverage. Used by `devflow feature complete`.
+### 3.6 Adapters (`src/adapters/`)
 
-### `src/adapters/stacks/`
+| Adapter | Path | Purpose |
+|---------|------|---------|
+| Git | `git/` | diff-model, exclusion-rules, consolidated operations |
+| Stacks | `stacks/` | TypeScript, Python, Go, Rust adapters (StackAdapter interface) |
+| Integration | `integration/` | Claude Code integration, Claude commands |
+| Models | `models/` | Anthropic, OpenAI, Ollama model adapters |
+| Process | `process/` | Safe subprocess execution with timeout |
+| Project | `project/` | File scanner, git inspector, feature detector |
+| Crew | `crew/` | Crew-based agent runner |
 
-The `StackAdapter` interface (defined in `src/adapters/stacks/types.ts`) provides a language-agnostic contract for running tools, detecting dangerous patterns, and parsing reports. Implementations exist for:
+### 3.7 Renderers (`src/renderers/`)
 
-| Adapter | File                          | Key Tools              |
-|---------|-------------------------------|------------------------|
-| TypeScript | `stacks/typescript/index.ts` | vitest, tsc, eslint  |
-| Python  | `stacks/python/index.ts`      | pytest, mypy, ruff    |
-| Go      | `stacks/go/index.ts`          | go test, go vet       |
-| Rust    | `stacks/rust/index.ts`        | cargo test, cargo clippy, cargo check |
-
-The stack detection module (`src/kernel/detection/stack.ts`) auto-detects which adapter to load by scanning for configuration files (tsconfig.json, pyproject.toml, go.mod, Cargo.toml).
-
-### `src/adapters/git/`
-
-- **`diff-model.ts`**: Models git diffs with change type classification, module detection, and file-level metadata.
-- **`exclusion-rules.ts`**: Pattern-based file exclusion (dist/, node_modules/, generated files).
-- **`index.ts`**: Consolidated git operations used by the audit engine.
-
-### `src/renderers/markdown.ts`
-
-Produces professional PR risk reports with severity matrix, executive summary, "what could have shipped broken" section, evidence table, and a "Devflow Governed" badge. Includes a compact PR snippet for pasting into PR descriptions.
-
-### `src/renderers/html.ts`
-
-Generates standalone HTML reports with dark/light mode, collapsible sections, and copy-to-clipboard support. Designed for CI artifacts and sharing with non-technical stakeholders.
-
-### `src/renderers/json.ts`
-
-Machine-readable JSON output for CI integration. Includes all raw audit data for downstream processing.
-
-### `src/renderers/badges.ts`
-
-Generates "Devflow Governed" badge in markdown, HTML, and SVG formats.
+- **markdown.ts** — PR risk reports with severity matrix, executive summary, evidence table, Devflow badge
+- **html.ts** — Standalone HTML reports with dark/light mode, collapsible sections
+- **json.ts** — Machine-readable output for CI integration
+- **badges.ts** — "Devflow Governed" badge in markdown, HTML, SVG
 
 ---
 
 ## 4. Design Principles
 
-### Thin CLI, Thick Core
+### Thin CLI, Thick Kernel
 
-Command wrappers in `src/cli/` and `src/commands/` are responsible for parsing arguments, calling core functions, and displaying results. Business logic lives in `src/core/`. No command file contains audit logic or policy computation.
+Command wrappers in `src/cli/` and `src/commands/` parse arguments, call kernel functions, and display results. Business logic lives in `src/kernel/`. No command file contains audit logic, policy computation, or workflow state management.
 
-### Logic in Core
+### Workflow Engine
 
-The three core modules -- `audit-engine.ts`, `evidence-engine.ts`, `policy-engine.ts` -- contain the project's intellectual property: risk detection algorithms, verdict computation, and evidence validation.
+All multi-step processes (feature development, brownfield discovery, QA loops, spec pipeline) run through the workflow engine in `src/kernel/workflow/engine.ts`. Tasks are defined in `.aiox-core/development/tasks/` and loaded declaratively.
+
+### Agent Authority
+
+The authority enforcer (`src/kernel/workflow/authority-enforcer.ts`) blocks unauthorized agent operations. The delegation matrix in `src/kernel/workflow/agent-delegation.ts` defines which agent owns each operation (e.g., only @devops can `git push`, only @pm can create epics).
 
 ### Adapters for Extensibility
 
-Every external system (git, programming language, AI model, CI tool) communicates through an adapter interface. Adding support for a new language means implementing `StackAdapter` -- no core changes required.
+Every external system (git, programming language, AI model, CI tool) communicates through an adapter interface. Adding support for a new language means implementing `StackAdapter` — no core changes required.
 
 ### Renderers for Output
 
@@ -189,7 +227,7 @@ Every decision is logged with actor identity, content hashes, git context, and t
 
 ## 5. State Machine
 
-The kernel state machine tracks project and feature lifecycle through 22 states:
+The kernel state machine tracks project and feature lifecycle through 22+ states:
 
 ```
 no-project
@@ -204,15 +242,31 @@ feature-coding-in-progress -> feature-verification -> feature-ci-verified -> fea
   -> feature-adversarial-review -> feature-done
 
 Drift states: drift-detected, blocked
-Legacy states: feature-clarification-needed, feature-planning, feature-planned,
-               feature-todo, feature-pre-code-audit (deprecated, backward-compatible)
+Legacy/backward-compatible: feature-clarification-needed, feature-planning, feature-planned,
+                             feature-todo
 ```
 
 Transitions are defined in `src/kernel/state/transitions.ts`. Guard conditions in `src/kernel/guards/` validate each transition.
 
 ---
 
-## 6. StackAdapter Interface
+## 6. Multi-Agent Orchestration Patterns
+
+### Parallel Spawner
+
+Fan-out N agents for independent analysis. Used for: multi-dimensional code review, parallel test generation, simultaneous file audits.
+
+### Adversarial Verify
+
+Spawn N independent skeptics per finding, each prompted to REFUTE. Kill if ≥ majority refute. Prevents plausible-but-wrong findings from surviving.
+
+### Completeness Critic
+
+A final agent that asks "what's missing — modality not run, claim unverified, source unread?" Its findings become the next round of work (loop-until-dry pattern).
+
+---
+
+## 7. StackAdapter Interface
 
 ```typescript
 interface StackAdapter {
@@ -246,30 +300,37 @@ interface StackAdapter {
 
 ---
 
-## 7. Adding a New Language
+## 8. Adding a New Language
 
 To add support for a new programming language:
 
 1. **Create the adapter directory**: `src/adapters/stacks/<language>/index.ts`
-2. **Implement `StackAdapter`**: Provide implementations for all methods in the interface. At minimum:
-   - `language` (string identifier)
-   - `runTests()` -- invoke the language's test runner
-   - `runLint()` -- invoke the linter
-   - `runTypecheck()` -- invoke the type checker
-   - `detectDangerousPatterns()` -- language-specific security scan
-3. **Add language detection**: Update `src/kernel/detection/stack.ts` to detect your language's project files (e.g., `Gemfile` for Ruby, `Cargo.toml` for Rust).
-4. **Add dangerous patterns**: Extend `UNIVERSAL_PATTERNS` in `audit-engine.ts` if the language has common pitfalls (e.g., `unsafe` blocks in Rust, `eval` in Ruby).
+2. **Implement `StackAdapter`**: Provide implementations for all methods in the interface.
+3. **Add language detection**: Update `src/kernel/detection/stack.ts` to detect your language's project files.
+4. **Add dangerous patterns**: Extend language-specific pattern detection.
 5. **Export from barrel**: Add your adapter to `src/adapters/stacks/index.ts`.
 6. **Test**: Create tests under `test/unit/adapters/stacks/<language>/`.
 7. **Document**: Update this file and add a how-to guide under `docs/`.
 
 ---
 
-## 8. Future
+## 9. Current Metrics (v1.0.0)
+
+- **Tests:** 813 passing
+- **Type errors:** 0
+- **Coverage:** ≥ 80% lines, 100% domain branches
+- **Vulnerabilities:** 0 (npm audit)
+- **Status check:** < 2s
+- **Source files:** ~170 TypeScript files
+- **Commands:** 25+ (9 stabilized from PREVIEW)
+
+---
+
+## 10. Future
 
 - **Monorepo support**: Enhanced `detectChangedModules()` to identify which packages changed and scope evidence checks accordingly.
-- **AI-assisted review**: Automated adversarial review using LangGraph pipeline (preview state, planned).
 - **Web dashboard**: Render findings to a local web dashboard for visual exploration of audit history.
 - **SAST/DAST integration**: Pluggable security scanning through the adapter interface.
 - **CI-native output**: JUnit XML, SARIF, and GitHub Annotations for deeper CI integration.
 - **Plugin system**: Third-party adapters loaded at runtime from npm packages.
+- **LangGraph pipeline**: AI-assisted review with LangGraph state machine (infrastructure present in `src/intelligence/`).
