@@ -18,6 +18,7 @@ import { doctorCommand } from "../../src/commands/doctor.js";
 import { installCommand } from "../../src/commands/install.js";
 import { fileExists } from "../../src/kernel/utils/fs.js";
 import { _resetCache } from "../../src/kernel/utils/cli-resolver.js";
+import { readDevflowCommandPrefix } from "../../src/adapters/integration/claude-commands.js";
 
 async function createTempProject(files: Record<string, string>): Promise<string> {
   const tmp = path.join(os.tmpdir(), `devflow-init-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
@@ -244,5 +245,111 @@ describe("Install: CLI availability messages", () => {
     // Should recommend global install when no package.json
     expect(output).toContain("install globally");
     expect(output).toContain("npm install -g @tjsasakinpm/devflow");
+  });
+
+  // ── Regression: install creates .claude/commands/devflow.md ──
+
+  it("should create .claude/commands/devflow.md when project already initialized (npx transient)", async () => {
+    tmpDir = await createAlreadyInitProject();
+    // Simulate npx transient: PATH has a devflow in _npx, no local install, no package.json dep
+    const npxTempDir = path.join(tmpDir, "_npx", "abc", "bin");
+    await fs.mkdir(npxTempDir, { recursive: true });
+    await fs.writeFile(
+      path.join(npxTempDir, "devflow"),
+      "#!/usr/bin/env node\nconsole.log('fake');\n",
+      "utf-8",
+    );
+    await fs.chmod(path.join(npxTempDir, "devflow"), 0o755);
+    process.env.PATH = npxTempDir + path.delimiter + "/usr/bin:/bin";
+    _resetCache();
+
+    const output = await captureConsole(() => installCommand(tmpDir));
+
+    // Must NOT recommend bare devflow commands
+    expect(output).not.toMatch(/\bRun devflow status\b/);
+    expect(output).not.toMatch(/\bRun devflow doctor\b/);
+    // Must recommend npx -y @tjsasakinpm/devflow@latest
+    expect(output).toContain("npx -y @tjsasakinpm/devflow@latest");
+
+    // Must create .claude/commands/devflow.md
+    const commandPath = path.join(tmpDir, ".claude", "commands", "devflow.md");
+    expect(await fileExists(commandPath)).toBe(true);
+
+    // Must mention Claude Code integration
+    expect(output).toContain("Claude Code integration installed");
+    expect(output).toContain("/devflow");
+  });
+
+  it("should use npx devflow prefix in .claude/commands/devflow.md when local install exists", async () => {
+    tmpDir = await createAlreadyInitProject();
+    // Create local node_modules/.bin/devflow
+    const nodeModulesBin = path.join(tmpDir, "node_modules", ".bin");
+    await fs.mkdir(nodeModulesBin, { recursive: true });
+    await fs.writeFile(
+      path.join(nodeModulesBin, "devflow"),
+      "#!/usr/bin/env node\nconsole.log('local');\n",
+      "utf-8",
+    );
+    await fs.chmod(path.join(nodeModulesBin, "devflow"), 0o755);
+    process.env.PATH = "/usr/bin:/bin";
+    _resetCache();
+
+    await installCommand(tmpDir);
+
+    const prefix = await readDevflowCommandPrefix(tmpDir);
+    expect(prefix).toBe("npx devflow");
+
+    const commandPath = path.join(tmpDir, ".claude", "commands", "devflow.md");
+    expect(await fileExists(commandPath)).toBe(true);
+  });
+
+  it("doctor --fix should create .claude/commands/devflow.md when missing", async () => {
+    tmpDir = await createAlreadyInitProject();
+    // Create local install so the resolver finds it
+    const nodeModulesBin = path.join(tmpDir, "node_modules", ".bin");
+    await fs.mkdir(nodeModulesBin, { recursive: true });
+    await fs.writeFile(
+      path.join(nodeModulesBin, "devflow"),
+      "#!/usr/bin/env node\nconsole.log('local');\n",
+      "utf-8",
+    );
+    await fs.chmod(path.join(nodeModulesBin, "devflow"), 0o755);
+    process.env.PATH = "/usr/bin:/bin";
+    _resetCache();
+
+    // Verify no .claude/commands/devflow.md before doctor
+    const commandPath = path.join(tmpDir, ".claude", "commands", "devflow.md");
+    expect(await fileExists(commandPath)).toBe(false);
+
+    // Run doctor --fix
+    await doctorCommand(tmpDir, { fix: true, dryRun: false });
+
+    // File must be created
+    expect(await fileExists(commandPath)).toBe(true);
+
+    const prefix = await readDevflowCommandPrefix(tmpDir);
+    expect(prefix).toBe("npx devflow");
+  });
+
+  it("doctor should report missing .claude/commands/devflow.md as FAIL", async () => {
+    tmpDir = await createAlreadyInitProject();
+    // Create local install
+    const nodeModulesBin = path.join(tmpDir, "node_modules", ".bin");
+    await fs.mkdir(nodeModulesBin, { recursive: true });
+    await fs.writeFile(
+      path.join(nodeModulesBin, "devflow"),
+      "#!/usr/bin/env node\nconsole.log('local');\n",
+      "utf-8",
+    );
+    await fs.chmod(path.join(nodeModulesBin, "devflow"), 0o755);
+    process.env.PATH = "/usr/bin:/bin";
+    _resetCache();
+
+    // Capture doctor output (without --fix)
+    const output = await captureConsole(() => doctorCommand(tmpDir, { fix: false, dryRun: false }));
+
+    // Should report the missing slash command
+    expect(output).toContain("Claude Code integration");
+    expect(output).toContain("not registered");
   });
 });

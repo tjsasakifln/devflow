@@ -4,10 +4,10 @@
  * Detects how the `devflow` CLI is available to the user and returns the
  * correct command prefix to use in messages (onboarding, doctor, etc.).
  *
- * Detection order:
- *   1. Global install — `devflow` binary found in PATH
- *   2. Local install  — `node_modules/.bin/devflow` exists
- *   3. package.json   — `@tjsasakinpm/devflow` listed in dependencies
+ * Resolution order (mandatory — local before global to avoid npx false positives):
+ *   1. Local install  — `node_modules/.bin/devflow` exists (persistent, not temp)
+ *   2. package.json   — `@tjsasakinpm/devflow` listed in dependencies/devDependencies
+ *   3. Global install — `devflow` binary found in PATH (filtered: reject npx temp paths)
  *   4. None           — CLI not persistently available; use remote npx
  *
  * Result is cached per process — it will not change during a single run.
@@ -38,20 +38,24 @@ export async function resolveInvocationCommand(
 ): Promise<InvocationResult> {
   if (_cached) return _cached;
 
-  // 1. Global — devflow binary found in PATH
-  if (findInPath("devflow")) {
-    _cached = { mode: "global", command: "devflow" };
-    return _cached;
-  }
-
-  // 2. Local — node_modules/.bin/devflow exists
+  // 1. Local — node_modules/.bin/devflow exists (verify it's not a temp npx directory)
   const localBin = path.join(cwd, "node_modules", ".bin", "devflow");
   if (fs.existsSync(localBin)) {
-    _cached = { mode: "local", command: "npx devflow" };
-    return _cached;
+    // Resolve symlink to verify the real path is not inside an npx temp directory
+    let realPath: string;
+    try {
+      realPath = fs.realpathSync(localBin);
+    } catch {
+      realPath = localBin;
+    }
+    if (!isNpxTempPath(realPath)) {
+      _cached = { mode: "local", command: "npx devflow" };
+      return _cached;
+    }
+    // If the .bin/devflow points into an npx temp dir, treat as not installed
   }
 
-  // 3. package.json — @tjsasakinpm/devflow listed in dependencies
+  // 2. package.json — @tjsasakinpm/devflow listed in dependencies
   const pkgPath = path.join(cwd, "package.json");
   if (await fileExists(pkgPath)) {
     try {
@@ -67,8 +71,15 @@ export async function resolveInvocationCommand(
         return _cached;
       }
     } catch {
-      // Malformed package.json — fall through to 'none'
+      // Malformed package.json — fall through
     }
+  }
+
+  // 3. Global — devflow binary found in PATH (reject npx temp directories)
+  const globalPath = findInPath("devflow");
+  if (globalPath !== null) {
+    _cached = { mode: "global", command: "devflow" };
+    return _cached;
   }
 
   // 4. None — not available persistently
@@ -88,10 +99,35 @@ export function _resetCache(): void {
 }
 
 /**
- * Check whether an executable name resolves in the system PATH.
- * Uses synchronous stat for speed (called at most once per process).
+ * Check whether a file path is inside a temporary npx/npm exec directory.
+ * These directories contain transient binaries that disappear after the
+ * npx process exits — they must NOT be treated as persistent installs.
  */
-function findInPath(binaryName: string): boolean {
+export function isNpxTempPath(filePath: string): boolean {
+  const normalized = path.normalize(filePath);
+
+  // Patterns that indicate a temporary npx/npm exec directory
+  const tempPatterns = [
+    "_npx",
+    ".npm" + path.sep + "_npx",
+    "npm-cache" + path.sep + "_npx",
+  ];
+
+  for (const pattern of tempPatterns) {
+    if (normalized.includes(pattern)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Search for an executable in the system PATH.
+ * Returns the resolved path if found and valid (persistent, not npx temp),
+ * or null if not found or found only in temp npx directories.
+ */
+function findInPath(binaryName: string): string | null {
   const PATH = (process.env.PATH || process.env.Path || "").split(path.delimiter);
 
   for (const dir of PATH) {
@@ -105,7 +141,11 @@ function findInPath(binaryName: string): boolean {
         // On non-Windows we also need execute permission
         try {
           fs.accessSync(candidate, fs.constants.X_OK);
-          return true;
+          // Reject if the binary is inside an npx temp directory
+          if (!isNpxTempPath(candidate)) {
+            return candidate;
+          }
+          // Found in npx temp — keep looking for a real persistent install
         } catch {
           // Not executable — keep looking
         }
@@ -120,7 +160,11 @@ function findInPath(binaryName: string): boolean {
         const winCandidate = path.join(dir, binaryName + ext);
         try {
           const stat = fs.statSync(winCandidate);
-          if (stat.isFile()) return true;
+          if (stat.isFile()) {
+            if (!isNpxTempPath(winCandidate)) {
+              return winCandidate;
+            }
+          }
         } catch {
           // Not found
         }
@@ -128,5 +172,5 @@ function findInPath(binaryName: string): boolean {
     }
   }
 
-  return false;
+  return null;
 }

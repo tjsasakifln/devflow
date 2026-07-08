@@ -126,6 +126,21 @@ Every command must use the full `npx -y @tjsasakinpm/devflow@latest` prefix — 
 
 ---
 
+## Claude Code Integration (`/devflow`)
+
+Installing the npm package and enabling the `/devflow` slash command in Claude Code are **two separate things**:
+
+- `npm install --save-dev @tjsasakinpm/devflow` installs the CLI.
+- `devflow install` creates `.claude/commands/devflow.md`, which registers the `/devflow` slash command.
+
+The `/devflow` command does **not** come from npm — it comes from the file `.claude/commands/devflow.md` that Devflow creates in your project. Claude Code discovers project commands at startup by scanning `.claude/commands/`.
+
+**If `/devflow` doesn't appear:** restart or reload Claude Code so it discovers the new `.claude/commands/` directory. Claude Code only scans for project commands on launch.
+
+When you run `/devflow` in Claude Code, it proxies your arguments to the Devflow CLI using the correct invocation prefix for your setup (local, global, or remote npx).
+
+---
+
 ## Three Setup Paths
 
 ### Solo Builder

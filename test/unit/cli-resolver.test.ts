@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import path from "node:path";
 import fs from "node:fs/promises";
 import os from "node:os";
-import { resolveInvocationCommand, _resetCache } from "../../src/kernel/utils/cli-resolver.js";
+import { resolveInvocationCommand, _resetCache, isNpxTempPath } from "../../src/kernel/utils/cli-resolver.js";
 
 async function createTempDir(): Promise<string> {
   const tmp = path.join(
@@ -157,5 +157,125 @@ describe("resolveInvocationCommand", () => {
     // Same object reference (cached)
     expect(result2).toBe(result1);
     expect(result2.mode).toBe("none");
+  });
+
+  // ── Regression: npx temp path filtering ──
+
+  it("should reject devflow found in _npx temp directory (return 'none')", async () => {
+    // Simulate npx injecting a temp binary into a _npx directory
+    const npxTempDir = path.join(tmpDir, "_npx", "abc123", "bin");
+    await fs.mkdir(npxTempDir, { recursive: true });
+    await fs.writeFile(
+      path.join(npxTempDir, "devflow"),
+      "#!/usr/bin/env node\nconsole.log('fake');\n",
+      "utf-8",
+    );
+    await fs.chmod(path.join(npxTempDir, "devflow"), 0o755);
+
+    // PATH contains _npx — no local install, no package.json dep
+    process.env.PATH = npxTempDir + path.delimiter + "/usr/bin:/bin";
+
+    _resetCache();
+    const result = await resolveInvocationCommand(tmpDir);
+    expect(result.mode).toBe("none");
+    expect(result.command).toBe("npx -y @tjsasakinpm/devflow@latest");
+  });
+
+  it("should prefer local .bin over _npx temp binary in PATH", async () => {
+    // Create a temp _npx binary in PATH (simulating npx transient)
+    const npxTempDir = path.join(tmpDir, "_npx", "xyz789", "bin");
+    await fs.mkdir(npxTempDir, { recursive: true });
+    await fs.writeFile(
+      path.join(npxTempDir, "devflow"),
+      "#!/usr/bin/env node\nconsole.log('fake');\n",
+      "utf-8",
+    );
+    await fs.chmod(path.join(npxTempDir, "devflow"), 0o755);
+
+    // Also create a real local node_modules/.bin/devflow
+    const nodeModulesBin = path.join(tmpDir, "node_modules", ".bin");
+    await fs.mkdir(nodeModulesBin, { recursive: true });
+    await fs.writeFile(
+      path.join(nodeModulesBin, "devflow"),
+      "#!/usr/bin/env node\nconsole.log('local');\n",
+      "utf-8",
+    );
+    await fs.chmod(path.join(nodeModulesBin, "devflow"), 0o755);
+
+    // PATH has both — local should take priority (checked first)
+    process.env.PATH = npxTempDir + path.delimiter + "/usr/bin:/bin";
+
+    _resetCache();
+    const result = await resolveInvocationCommand(tmpDir);
+    expect(result.mode).toBe("local");
+    expect(result.command).toBe("npx devflow");
+  });
+
+  it("should reject node_modules/.bin/devflow that points into _npx temp dir", async () => {
+    // Create the real binary inside an _npx temp directory
+    const npxTempDir = path.join(tmpDir, "_npx", "def456", "bin");
+    await fs.mkdir(npxTempDir, { recursive: true });
+    const realBinary = path.join(npxTempDir, "devflow");
+    await fs.writeFile(
+      realBinary,
+      "#!/usr/bin/env node\nconsole.log('fake');\n",
+      "utf-8",
+    );
+    await fs.chmod(realBinary, 0o755);
+
+    // Create a .bin/devflow symlink pointing into _npx
+    const nodeModulesBin = path.join(tmpDir, "node_modules", ".bin");
+    await fs.mkdir(nodeModulesBin, { recursive: true });
+    await fs.symlink(realBinary, path.join(nodeModulesBin, "devflow"));
+
+    // No persistent PATH binary, no package.json dep
+    process.env.PATH = "/usr/bin:/bin";
+
+    _resetCache();
+    const result = await resolveInvocationCommand(tmpDir);
+    // The .bin/devflow resolves to an _npx path → should fall through to 'none'
+    expect(result.mode).toBe("none");
+    expect(result.command).toBe("npx -y @tjsasakinpm/devflow@latest");
+  });
+
+  it("should accept global devflow in a normal PATH directory", async () => {
+    // Normal directory (not _npx) with devflow binary
+    const normalBinDir = path.join(tmpDir, "usr", "local", "bin");
+    await fs.mkdir(normalBinDir, { recursive: true });
+    await fs.writeFile(
+      path.join(normalBinDir, "devflow"),
+      "#!/usr/bin/env node\nconsole.log('real');\n",
+      "utf-8",
+    );
+    await fs.chmod(path.join(normalBinDir, "devflow"), 0o755);
+
+    // No local .bin, no package.json dep
+    process.env.PATH = normalBinDir + path.delimiter + "/usr/bin:/bin";
+
+    _resetCache();
+    const result = await resolveInvocationCommand(tmpDir);
+    expect(result.mode).toBe("global");
+    expect(result.command).toBe("devflow");
+  });
+});
+
+describe("isNpxTempPath", () => {
+  it("should detect _npx directories", () => {
+    expect(isNpxTempPath("/home/user/_npx/abc123/bin/devflow")).toBe(true);
+    expect(isNpxTempPath("/tmp/_npx/xyz/node_modules/.bin/devflow")).toBe(true);
+  });
+
+  it("should detect .npm/_npx directories", () => {
+    expect(isNpxTempPath("/home/user/.npm/_npx/abc123/node_modules/.bin/devflow")).toBe(true);
+  });
+
+  it("should detect npm-cache/_npx directories", () => {
+    expect(isNpxTempPath("/home/user/.npm/npm-cache/_npx/abc/bin/devflow")).toBe(true);
+  });
+
+  it("should not flag normal paths", () => {
+    expect(isNpxTempPath("/usr/local/bin/devflow")).toBe(false);
+    expect(isNpxTempPath("/home/user/project/node_modules/.bin/devflow")).toBe(false);
+    expect(isNpxTempPath("/opt/devflow/bin/devflow")).toBe(false);
   });
 });

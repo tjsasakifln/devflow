@@ -8,6 +8,7 @@ import { generateCockpit } from "../cockpit/generator.js";
 import { fileExists, ensureDir } from "../utils/fs.js";
 import { getVersion } from "../kernel/utils/version.js";
 import { resolveInvocationCommand } from "../kernel/utils/cli-resolver.js";
+import { ensureDevflowCommand, readDevflowCommandPrefix } from "../adapters/integration/claude-commands.js";
 import { renderRemediation } from "../errors/remediation.js";
 import type { Remediation } from "../errors/remediation.js";
 import pc from "picocolors";
@@ -618,6 +619,82 @@ export async function doctorCommand(
         id: 17, name: "CLI Invocability", status: "INFO",
         message: "Devflow not initialized in this project",
       });
+    }
+  }
+
+  // ── 18. Claude Code integration ──
+  {
+    const commandPath = path.join(rootPath, ".claude", "commands", "devflow.md");
+    const commandExists = await fileExists(commandPath);
+
+    if (commandExists) {
+      const currentPrefix = await readDevflowCommandPrefix(rootPath);
+      if (currentPrefix === resolved.command) {
+        checks.push({
+          id: 18, name: "Claude Code integration", status: "PASS",
+          message: `/devflow slash command registered (prefix: ${resolved.command})`,
+        });
+      } else if (currentPrefix !== null) {
+        // File exists and is Devflow-managed, but prefix is wrong/outdated
+        if (canFix) {
+          await ensureDevflowCommand(rootPath, resolved.command);
+          checks.push({
+            id: 18, name: "Claude Code integration", status: "FIXED",
+            message: `Updated /devflow prefix: "${currentPrefix}" → "${resolved.command}"`,
+          });
+        } else {
+          checks.push({
+            id: 18, name: "Claude Code integration", status: "FAIL",
+            message: `/devflow has wrong prefix: "${currentPrefix}" (expected: "${resolved.command}")`,
+            remediation: {
+              title: "Claude Code slash command prefix outdated",
+              whyMatters: "The /devflow command maps to the wrong CLI invocation. Commands may fail or use the wrong binary.",
+              impact: "Claude Code may invoke npx transiently instead of a persistent local install.",
+              suggestedFix: `Run \`${resolved.command} doctor --fix\` to update the command file.`,
+              minimalExample: `${resolved.command} doctor --fix`,
+              severity: "advisory",
+              copyableCommand: `${resolved.command} doctor --fix`,
+            },
+          });
+        }
+      } else {
+        // File exists but without Devflow marker — user-owned, don't touch
+        checks.push({
+          id: 18, name: "Claude Code integration", status: "INFO",
+          message: ".claude/commands/devflow.md exists but is not Devflow-managed (user-owned content)",
+        });
+      }
+    } else {
+      // File doesn't exist
+      const isDevflowProject = await fileExists(path.join(rootPath, ".devflow", "config.json"));
+      if (isDevflowProject) {
+        if (canFix) {
+          await ensureDevflowCommand(rootPath, resolved.command);
+          checks.push({
+            id: 18, name: "Claude Code integration", status: "FIXED",
+            message: `Created /devflow slash command (prefix: ${resolved.command})`,
+          });
+        } else {
+          checks.push({
+            id: 18, name: "Claude Code integration", status: "FAIL",
+            message: "/devflow slash command not registered — run doctor --fix",
+            remediation: {
+              title: "Claude Code slash command missing",
+              whyMatters: "Without .claude/commands/devflow.md, the /devflow command is not available in Claude Code.",
+              impact: "Users cannot type /devflow in Claude Code to inspect project state or run governance commands.",
+              suggestedFix: `Run \`${resolved.command} doctor --fix\` or \`${resolved.command} install\` to create the slash command.`,
+              minimalExample: `${resolved.command} doctor --fix`,
+              severity: "advisory",
+              copyableCommand: `${resolved.command} doctor --fix`,
+            },
+          });
+        }
+      } else {
+        checks.push({
+          id: 18, name: "Claude Code integration", status: "INFO",
+          message: "Devflow not initialized — /devflow command not needed yet",
+        });
+      }
     }
   }
 

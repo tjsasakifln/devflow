@@ -17,6 +17,7 @@ import { doctorCommand } from "./doctor.js";
 import { detectStackProfile } from "../kernel/detection/stack.js";
 import { fileExists } from "../kernel/utils/fs.js";
 import { resolveInvocationCommand } from "../kernel/utils/cli-resolver.js";
+import { ensureDevflowCommand } from "../adapters/integration/claude-commands.js";
 import pc from "picocolors";
 
 export interface InstallOptions {
@@ -117,17 +118,30 @@ export async function installCommand(
     const resolved = await resolveInvocationCommand(cwd);
     const hasPackageJson = await fileExists(`${cwd}/package.json`);
     console.log(`  ${pc.yellow("⚠")} Devflow already initialized in this directory.\n`);
+
     if (resolved.mode === "none") {
       console.log(pc.yellow("  Devflow is already initialized in this directory, but the CLI is not installed persistently."));
       if (hasPackageJson) {
-        console.log(pc.dim(`  Use \`${resolved.command} status\` now, or run \`npm install --save-dev @tjsasakinpm/devflow\` to enable \`npx devflow status\` / local scripts.\n`));
+        console.log(pc.dim(`  Use \`${resolved.command} status\` now, or run \`npm install --save-dev @tjsasakinpm/devflow\` to enable \`npx devflow status\` / local scripts.`));
       } else {
-        console.log(pc.dim(`  Use \`${resolved.command} status\` now, or install globally: \`npm install -g @tjsasakinpm/devflow\`.\n`));
+        console.log(pc.dim(`  Use \`${resolved.command} status\` now, or install globally: \`npm install -g @tjsasakinpm/devflow\`.`));
       }
     } else {
       console.log(pc.dim(`Run ${resolved.command} status to see current state.`));
-      console.log(pc.dim(`Run ${resolved.command} doctor to verify health.\n`));
+      console.log(pc.dim(`Run ${resolved.command} doctor to verify health.`));
     }
+
+    // ── Claude Code integration (always run, even when already init'd) ──
+    const ccResult = await ensureDevflowCommand(cwd, resolved.command);
+    if (ccResult.created || ccResult.updated) {
+      console.log(`\n  ${pc.green("✓")} Claude Code integration installed: ${pc.bold("/devflow")}`);
+      if (ccResult.created) {
+        console.log(pc.dim("  If /devflow does not appear immediately, restart or reload Claude Code"));
+        console.log(pc.dim("  so it discovers the new project command."));
+      }
+    }
+
+    console.log();
     return;
   }
 
@@ -170,6 +184,17 @@ export async function installCommand(
 
   // ── Regenerate cockpit ──
   await updateCockpitCommand(cwd);
+
+  // ── Claude Code slash command ──
+  const resolvedForCC = await resolveInvocationCommand(cwd);
+  const ccResult = await ensureDevflowCommand(cwd, resolvedForCC.command);
+  if (ccResult.created || ccResult.updated) {
+    console.log(`\n  ${pc.green("✓")} Claude Code integration installed: ${pc.bold("/devflow")}`);
+    if (ccResult.created) {
+      console.log(pc.dim("  If /devflow does not appear immediately, restart or reload Claude Code"));
+      console.log(pc.dim("  so it discovers the new project command."));
+    }
+  }
 
   // ── Git hooks (opt-in) ──
   await installGitHooks(cwd, options);
