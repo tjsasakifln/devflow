@@ -16,6 +16,7 @@ import { updateCockpitCommand } from "./update-cockpit.js";
 import { doctorCommand } from "./doctor.js";
 import { detectStackProfile } from "../kernel/detection/stack.js";
 import { fileExists } from "../kernel/utils/fs.js";
+import { resolveInvocationCommand } from "../kernel/utils/cli-resolver.js";
 import pc from "picocolors";
 
 export interface InstallOptions {
@@ -113,9 +114,20 @@ export async function installCommand(
   // Devflow already?
   const alreadyInit = await fileExists(`${cwd}/.devflow/config.json`);
   if (alreadyInit) {
+    const resolved = await resolveInvocationCommand(cwd);
+    const hasPackageJson = await fileExists(`${cwd}/package.json`);
     console.log(`  ${pc.yellow("⚠")} Devflow already initialized in this directory.\n`);
-    console.log(pc.dim("Run devflow status to see current state."));
-    console.log(pc.dim("Run devflow doctor to verify health.\n"));
+    if (resolved.mode === "none") {
+      console.log(pc.yellow("  Devflow is already initialized in this directory, but the CLI is not installed persistently."));
+      if (hasPackageJson) {
+        console.log(pc.dim(`  Use \`${resolved.command} status\` now, or run \`npm install --save-dev @tjsasakinpm/devflow\` to enable \`npx devflow status\` / local scripts.\n`));
+      } else {
+        console.log(pc.dim(`  Use \`${resolved.command} status\` now, or install globally: \`npm install -g @tjsasakinpm/devflow\`.\n`));
+      }
+    } else {
+      console.log(pc.dim(`Run ${resolved.command} status to see current state.`));
+      console.log(pc.dim(`Run ${resolved.command} doctor to verify health.\n`));
+    }
     return;
   }
 
@@ -188,17 +200,18 @@ export async function installCommand(
   console.log(pc.dim("  AI agents (Claude Code, Cursor, Copilot) ship code without"));
   console.log(pc.dim("  requirements, tests, or review. Devflow enforces evidence before merge."));
   console.log();
+  const resolvedNext = await resolveInvocationCommand(cwd);
   console.log(pc.bold("Next steps:"));
-  console.log(pc.cyan("  devflow feature new \"your-feature\""));
+  console.log(pc.cyan(`  ${resolvedNext.command} feature new "your-feature"`));
   console.log(pc.dim("  → Creates workspace, asks what problem you're solving."));
   console.log();
-  console.log(pc.cyan("  devflow next"));
+  console.log(pc.cyan(`  ${resolvedNext.command} next`));
   console.log(pc.dim("  → Shows what to do after each step."));
   console.log();
-  console.log(pc.cyan("  devflow review-pr"));
+  console.log(pc.cyan(`  ${resolvedNext.command} review-pr`));
   console.log(pc.dim("  → Generates a risk report you can paste in any PR."));
   console.log();
-  console.log(pc.dim("For help: devflow --help | For health: devflow doctor\n"));
+  console.log(pc.dim(`For help: ${resolvedNext.command} --help | For health: ${resolvedNext.command} doctor\n`));
 }
 
 /**

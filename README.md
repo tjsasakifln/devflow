@@ -27,11 +27,11 @@
 
 | You Need This | Run That |
 |---|---|
-| **Audit AI-generated changes before commit** | `devflow audit` |
-| **Generate a PR risk report** | `devflow review-pr --format markdown` |
-| **Full AI governance workflow** | `feature new` -> `feature complete` -> `gatekeep` |
+| **Audit AI-generated changes before commit** | `npx devflow audit` |
+| **Generate a PR risk report** | `npx devflow review-pr --format markdown` |
+| **Full AI governance workflow** | `npx devflow feature new` → `feature complete` → `gatekeep` |
 | **Run AI code audit in CI** | See [GitHub Actions section](#github-actions) |
-| **Adversarial review of a feature** | `devflow adversarial-review <id>` |
+| **Adversarial review of a feature** | `npx devflow adversarial-review <id>` |
 
 ---
 
@@ -79,30 +79,48 @@ Devflow is not a linter. It is not a CI pipeline. It is an **engineering governa
 
 ## Quick Start
 
+### Recommended: Install as project dependency
+
+Devflow is a recurring governance tool — install it locally so it's always available:
+
 ```bash
-# Install Devflow in your project (30 seconds)
-npx @tjsasakinpm/devflow install
+npm install --save-dev @tjsasakinpm/devflow
+npx devflow install
 
-# Audit AI-generated changes right away
-devflow audit
-
-# Create your first feature
-devflow feature new "my-feature"
-
-# Fill artifacts, follow guidance
-devflow next
-
-# When ready, generate AI implementation prompt
-devflow feature prompt 001-my-feature --copy
-
-# After implementation, verify
-devflow feature complete 001-my-feature
-devflow adversarial-review 001-my-feature
-devflow gatekeep 001-my-feature --approve --actor "reviewer"
-
-# Generate PR risk report
-devflow review-pr --format markdown
+# Then use via npx:
+npx devflow audit
+npx devflow feature new "my-feature"
+npx devflow next
+npx devflow doctor
 ```
+
+### Set up npm scripts (optional but recommended)
+
+After installing, add to your `package.json` scripts for even shorter commands:
+
+```json
+"scripts": {
+  "devflow": "devflow",
+  "devflow:status": "devflow status",
+  "devflow:doctor": "devflow doctor",
+  "devflow:audit": "devflow audit",
+  "devflow:next": "devflow next"
+}
+```
+
+Then: `npm run devflow:status`, `npm run devflow:audit`, etc.
+
+### Try without installing (one-off evaluation)
+
+For a single evaluation run without modifying `package.json`:
+
+```bash
+npx -y @tjsasakinpm/devflow@latest install
+npx -y @tjsasakinpm/devflow@latest audit
+npx -y @tjsasakinpm/devflow@latest feature new "my-feature"
+```
+
+Every command must use the full `npx -y @tjsasakinpm/devflow@latest` prefix — the bare `devflow` command is only available after local or global install.
 
 [Full demo ->](examples/ai-pr-governance-demo/)
 
@@ -115,8 +133,8 @@ devflow review-pr --format markdown
 Working alone? Devflow becomes your second pair of eyes.
 
 ```bash
-devflow config set riskTolerance relaxed
-devflow config set reviewMode solo-hardened
+npx devflow config set riskTolerance relaxed
+npx devflow config set reviewMode solo-hardened
 ```
 
 Self-approval OK. Adversarial review compensates for missing reviewer. Lint and coverage become advisory — still visible, not blocking.
@@ -126,7 +144,7 @@ Self-approval OK. Adversarial review compensates for missing reviewer. Lint and 
 Standard team setup with role segregation.
 
 ```bash
-devflow install --review-mode independent
+npx devflow install --review-mode independent
 ```
 
 Implementer != approver enforced (Constitution C12). Independent gatekeep required before merge.
@@ -136,8 +154,8 @@ Implementer != approver enforced (Constitution C12). Independent gatekeep requir
 CI required. All gates blocking. Full audit trail.
 
 ```bash
-devflow config set executionMode strict
-devflow config set riskTolerance strict
+npx devflow config set executionMode strict
+npx devflow config set riskTolerance strict
 ```
 
 Unknown actors blocked. Every check must pass. Implementation log must be complete.
@@ -150,28 +168,28 @@ Unknown actors blocked. Every check must pass. Implementation log must be comple
 
 | Command | Description |
 |---------|-------------|
-| `devflow audit` | Audit AI-generated changes before they reach a PR |
-| `devflow install` | Guided first-run setup |
-| `devflow init` | Initialize Devflow (script-friendly) |
-| `devflow status [--json] [--verbose]` | Show project state, confidence, evidence |
-| `devflow next [--json] [--diagnose]` | Recommend next best action |
-| `devflow feature new <name>` | Create feature workspace |
-| `devflow feature complete <id>` | Run 25 Definition of Done checks |
-| `devflow feature prompt <id> [--copy] [--save]` | Generate AI implementation prompt |
-| `devflow gatekeep <id> --approve\|--reject` | Independent gatekeeper review |
-| `devflow adversarial-review <id>` | Adversarial review — 12 attack vectors |
-| `devflow review-pr [--base <branch>] [--output <file>] [--format <format>]` | Generate PR risk report |
-| `devflow doctor [--fix]` | Diagnose and fix common issues |
-| `devflow update-cockpit` | Regenerate DEVFLOW.md cockpit |
-| `devflow index` | Map project structure |
-| `devflow config set <key> <value>` | Configure reviewMode, executionMode, riskTolerance |
+| `npx devflow audit` | Audit AI-generated changes before they reach a PR |
+| `npx devflow install` | Guided first-run setup |
+| `npx devflow init` | Initialize Devflow (script-friendly) |
+| `npx devflow status [--json] [--verbose]` | Show project state, confidence, evidence |
+| `npx devflow next [--json] [--diagnose]` | Recommend next best action |
+| `npx devflow feature new <name>` | Create feature workspace |
+| `npx devflow feature complete <id>` | Run 25 Definition of Done checks |
+| `npx devflow feature prompt <id> [--copy] [--save]` | Generate AI implementation prompt |
+| `npx devflow gatekeep <id> --approve\|--reject` | Independent gatekeeper review |
+| `npx devflow adversarial-review <id>` | Adversarial review — 12 attack vectors |
+| `npx devflow review-pr [--base <branch>] [--output <file>] [--format <format>]` | Generate PR risk report |
+| `npx devflow doctor [--fix]` | Diagnose and fix common issues |
+| `npx devflow update-cockpit` | Regenerate DEVFLOW.md cockpit |
+| `npx devflow index` | Map project structure |
+| `npx devflow config set <key> <value>` | Configure reviewMode, executionMode, riskTolerance |
 
 ### EXPERIMENTAL — Partial implementation
 
 | Command | Description |
 |---------|-------------|
-| `devflow discover` | Discover and document brownfield project structure |
-| `devflow eval run` | Run evaluation suite |
+| `npx devflow discover` | Discover and document brownfield project structure |
+| `npx devflow eval run` | Run evaluation suite |
 
 ---
 
@@ -179,23 +197,23 @@ Unknown actors blocked. Every check must pass. Implementation log must be comple
 
 ```bash
 # Review mode
-devflow config set reviewMode independent      # Different actor required (default)
-devflow config set reviewMode solo-hardened    # Self-approval with compensating evidence
+npx devflow config set reviewMode independent      # Different actor required (default)
+npx devflow config set reviewMode solo-hardened    # Self-approval with compensating evidence
 
 # Execution mode
-devflow config set executionMode local         # Default
-devflow config set executionMode strict        # CI required, all gates blocking
+npx devflow config set executionMode local         # Default
+npx devflow config set executionMode strict        # CI required, all gates blocking
 
 # Risk tolerance
-devflow config set riskTolerance relaxed       # Solo: advisory gates, self-approval OK
-devflow config set riskTolerance moderate      # Team: standard gates (default)
-devflow config set riskTolerance strict        # Release: all gates blocking, CI mandatory
+npx devflow config set riskTolerance relaxed       # Solo: advisory gates, self-approval OK
+npx devflow config set riskTolerance moderate      # Team: standard gates (default)
+npx devflow config set riskTolerance strict        # Release: all gates blocking, CI mandatory
 ```
 
 The `audit` command supports a `--risk-tolerance` flag to override the project default for a single run:
 
 ```bash
-devflow audit --risk-tolerance strict
+npx devflow audit --risk-tolerance strict
 ```
 
 ### Risk Tolerance Behavior
@@ -231,9 +249,9 @@ jobs:
         with:
           node-version: '20'
       - run: npx @tjsasakinpm/devflow init
-      - run: devflow feature complete feature-id
-      - run: devflow adversarial-review feature-id
-      - run: devflow gatekeep feature-id --approve --actor github-actions
+      - run: npx @tjsasakinpm/devflow feature complete feature-id
+      - run: npx @tjsasakinpm/devflow adversarial-review feature-id
+      - run: npx @tjsasakinpm/devflow gatekeep feature-id --approve --actor github-actions
 ```
 
 ---
@@ -264,9 +282,12 @@ Devflow tracks 22 states across project detection (5), feature pipeline (15), an
 ## Installation
 
 ```bash
-npx @tjsasakinpm/devflow install    # Guided onboarding (recommended)
-npm install -g @tjsasakinpm/devflow # Global install
-npx @tjsasakinpm/devflow init       # Script-friendly (no onboarding)
+npm install --save-dev @tjsasakinpm/devflow  # Local install (recommended)
+npx devflow install                           # Guided onboarding
+npx devflow init                              # Script-friendly (no onboarding)
+
+# Or install globally:
+npm install -g @tjsasakinpm/devflow
 ```
 
 Requires Node.js >= 18.

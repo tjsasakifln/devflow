@@ -15,7 +15,9 @@ import os from "node:os";
 
 import { initCommand } from "../../src/commands/init.js";
 import { doctorCommand } from "../../src/commands/doctor.js";
+import { installCommand } from "../../src/commands/install.js";
 import { fileExists } from "../../src/kernel/utils/fs.js";
+import { _resetCache } from "../../src/kernel/utils/cli-resolver.js";
 
 async function createTempProject(files: Record<string, string>): Promise<string> {
   const tmp = path.join(os.tmpdir(), `devflow-init-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
@@ -133,5 +135,114 @@ describe("Init: Claude Code skill integration", () => {
 
     // Just verify doctor runs without throwing
     await expect(doctorCommand(tmpDir, { fix: false, dryRun: true })).resolves.toBeUndefined();
+  });
+});
+
+describe("Install: CLI availability messages", () => {
+  let tmpDir: string;
+  let originalPath: string;
+
+  async function createAlreadyInitProject(): Promise<string> {
+    const tmp = path.join(
+      os.tmpdir(),
+      `devflow-install-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    );
+    await fs.mkdir(path.join(tmp, ".devflow"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmp, ".devflow", "config.json"),
+      JSON.stringify({ projectName: "test-project", createdTimestamp: new Date().toISOString() }),
+    );
+    await fs.writeFile(
+      path.join(tmp, "package.json"),
+      JSON.stringify({ name: "test-project", version: "1.0.0" }),
+    );
+    return tmp;
+  }
+
+  function captureConsole(fn: () => Promise<void>): Promise<string> {
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+    return fn().then(() => {
+      console.log = origLog;
+      return logs.join("\n");
+    }).catch((err: unknown) => {
+      console.log = origLog;
+      throw err;
+    });
+  }
+
+  beforeEach(async () => {
+    originalPath = process.env.PATH || process.env.Path || "";
+    _resetCache();
+  });
+
+  afterEach(async () => {
+    if (tmpDir) {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+    process.env.PATH = originalPath;
+    _resetCache();
+  });
+
+  it("should NOT recommend bare `devflow status` when CLI is not persistently installed", async () => {
+    tmpDir = await createAlreadyInitProject();
+    // Ensure devflow is NOT in PATH and NOT in node_modules
+    process.env.PATH = "/usr/bin:/bin";
+
+    const output = await captureConsole(() => installCommand(tmpDir));
+
+    // Must NOT contain bare devflow command recommendation
+    expect(output).not.toMatch(/\bRun devflow status\b/);
+    expect(output).not.toMatch(/\bRun devflow doctor\b/);
+    // Should suggest npx -y @tjsasakinpm/devflow@latest or install instruction
+    expect(output).toContain("npx -y @tjsasakinpm/devflow@latest");
+    expect(output).toContain("not installed persistently");
+  });
+
+  it("CAN recommend npx devflow status when local node_modules/.bin/devflow exists", async () => {
+    tmpDir = await createAlreadyInitProject();
+    // Create local node_modules/.bin/devflow
+    const nodeModulesBin = path.join(tmpDir, "node_modules", ".bin");
+    await fs.mkdir(nodeModulesBin, { recursive: true });
+    await fs.writeFile(
+      path.join(nodeModulesBin, "devflow"),
+      "#!/usr/bin/env node\nconsole.log('fake');\n",
+      "utf-8",
+    );
+    await fs.chmod(path.join(nodeModulesBin, "devflow"), 0o755);
+    // Ensure devflow is NOT in global PATH
+    process.env.PATH = "/usr/bin:/bin";
+    _resetCache();
+
+    const output = await captureConsole(() => installCommand(tmpDir));
+
+    // With local install, it CAN recommend npx devflow
+    expect(output).toContain("npx devflow status");
+    // Should NOT recommend the remote npx invocation
+    expect(output).not.toContain("npx -y @tjsasakinpm/devflow@latest");
+    expect(output).not.toContain("not installed persistently");
+  });
+
+  it("should recommend global install when no package.json exists", async () => {
+    tmpDir = path.join(
+      os.tmpdir(),
+      `devflow-install-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    );
+    await fs.mkdir(path.join(tmpDir, ".devflow"), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, ".devflow", "config.json"),
+      JSON.stringify({ projectName: "no-pkg-project", createdTimestamp: new Date().toISOString() }),
+    );
+    // No package.json
+    process.env.PATH = "/usr/bin:/bin";
+
+    const output = await captureConsole(() => installCommand(tmpDir));
+
+    // Should recommend global install when no package.json
+    expect(output).toContain("install globally");
+    expect(output).toContain("npm install -g @tjsasakinpm/devflow");
   });
 });

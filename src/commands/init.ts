@@ -8,6 +8,7 @@ import { computeRecommendation } from "../engine/next-action.js";
 import { generateCockpit } from "../cockpit/generator.js";
 import { ensureClaudeMdSection } from "../integration/claude-code.js";
 import { fileExists } from "../utils/fs.js";
+import { resolveInvocationCommand } from "../kernel/utils/cli-resolver.js";
 import pc from "picocolors";
 
 // Paths created during init — used for rollback on failure
@@ -40,10 +41,21 @@ export async function initCommand(cwd: string): Promise<void> {
 
   // Check if already initialized
   if (await fileExists(path.join(rootPath, ".devflow", "config.json"))) {
+    const resolved = await resolveInvocationCommand(rootPath);
+    const hasPackageJson = await fileExists(path.join(rootPath, "package.json"));
     console.log(
       pc.yellow("⚠️  Devflow is already initialized in this directory.")
     );
-    console.log("   Run " + pc.bold("devflow doctor") + " to fix any issues.\n");
+    if (resolved.mode === "none") {
+      console.log(pc.yellow("  Devflow is already initialized in this directory, but the CLI is not installed persistently."));
+      if (hasPackageJson) {
+        console.log(pc.dim(`  Use \`${resolved.command} doctor\` to fix any issues, or run \`npm install --save-dev @tjsasakinpm/devflow\` to enable \`npx devflow doctor\`.\n`));
+      } else {
+        console.log(pc.dim(`  Use \`${resolved.command} doctor\` to fix any issues, or install globally: \`npm install -g @tjsasakinpm/devflow\`.\n`));
+      }
+    } else {
+      console.log("   Run " + pc.bold(`${resolved.command} doctor`) + " to fix any issues.\n");
+    }
     return;
   }
 
@@ -246,7 +258,7 @@ export async function initCommand(cwd: string): Promise<void> {
     console.log();
 
     // ── Onboarding Roadmap ──
-    await showOnboardingRoadmap(inspection, stateResult);
+    await showOnboardingRoadmap(inspection, stateResult, rootPath);
   } catch (err) {
     // ── Rollback: remove created paths in reverse order ──
     console.error(
@@ -288,7 +300,9 @@ export async function initCommand(cwd: string): Promise<void> {
 async function showOnboardingRoadmap(
   inspection: any,
   _stateResult: any,
+  rootPath: string,
 ): Promise<void> {
+  const resolved = await resolveInvocationCommand(rootPath);
   const isBrownfield = inspection.fileCount > 10;
   const stackProfile = inspection.stackProfile;
   const language = stackProfile?.language || inspection.language || "unknown";
@@ -300,10 +314,10 @@ async function showOnboardingRoadmap(
     console.log(pc.yellow("🏗️  Brownfield Project Detected"));
     console.log(pc.dim(`   ${inspection.fileCount}+ files, existing codebase\n`));
     console.log(pc.cyan("  Before asking AI to code:"));
-    console.log(`    ${pc.bold("1.")} Run ${pc.bold("devflow discover")} to map existing architecture`);
+    console.log(`    ${pc.bold("1.")} Run ${pc.bold(`${resolved.command} discover`)} to map existing architecture`);
     console.log(`    ${pc.bold("2.")} Review ${pc.dim("_devflow/discovery/")} reports`);
     console.log(`    ${pc.bold("3.")} Identify high-risk areas before making changes`);
-    console.log(`    ${pc.bold("4.")} Run ${pc.bold("devflow feature new <name>")} for your first feature`);
+    console.log(`    ${pc.bold("4.")} Run ${pc.bold(`${resolved.command} feature new <name>`)} for your first feature`);
     console.log();
     console.log(
       pc.yellow("  ⚠️  Don't implement anything before understanding the existing coupling patterns.")
@@ -313,7 +327,7 @@ async function showOnboardingRoadmap(
     console.log(pc.dim("   Clean start or minimal code\n"));
     console.log(pc.cyan("  Before asking AI to code:"));
     console.log(`    ${pc.bold("1.")} Document your architecture vision in ${pc.dim("_devflow/specs/")}`);
-    console.log(`    ${pc.bold("2.")} Start with ${pc.bold("devflow feature new <name>")}`);
+    console.log(`    ${pc.bold("2.")} Start with ${pc.bold(`${resolved.command} feature new <name>`)}`);
     console.log(`    ${pc.bold("3.")} Write requirements following the pedagogical template`);
     console.log(`    ${pc.bold("4.")} Always complete requirements before writing code`);
     console.log();
@@ -388,10 +402,10 @@ async function showOnboardingRoadmap(
   console.log();
   console.log(pc.bold("First recommended command:"));
   console.log(
-    `  ${pc.cyan(isBrownfield ? "devflow discover" : "devflow feature new <name>")}`
+    `  ${pc.cyan(isBrownfield ? `${resolved.command} discover` : `${resolved.command} feature new <name>`)}`
   );
   console.log();
   console.log(
-    `Run ${pc.bold("devflow next")} anytime to see the recommended next action.\n`
+    `Run ${pc.bold(`${resolved.command} next`)} anytime to see the recommended next action.\n`
   );
 }

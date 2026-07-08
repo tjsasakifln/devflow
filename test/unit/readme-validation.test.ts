@@ -86,17 +86,25 @@ describe("README.md Validation", () => {
   });
 
   it("should recommend npx @tjsasakinpm/devflow install as primary entry point", () => {
-    // The README must document install (not init) as the recommended first-use command
-    expect(readmeContent).toContain("npx @tjsasakinpm/devflow install");
-    // The first npx @tjsasakinpm/devflow reference should use 'install', not 'init'
-    const firstNpxRef = readmeContent.match(/npx @tjsasakinpm\/devflow \w+/);
-    expect(firstNpxRef).not.toBeNull();
-    expect(firstNpxRef![0]).toBe("npx @tjsasakinpm/devflow install");
+    // The README must document install (not init) as the recommended first-use command.
+    // This appears in the "Try without installing" section as npx -y @tjsasakinpm/devflow@latest install
+    expect(readmeContent).toMatch(/npx.*@tjsasakinpm\/devflow.*install/);
+    // Must also show the preferred path: local install as devDependency
+    expect(readmeContent).toContain("npm install --save-dev @tjsasakinpm/devflow");
   });
 
-  it("should not use unscoped npx devflow install", () => {
-    // Must always use the scoped package name — "devflow" is unavailable on npm
-    expect(readmeContent).not.toContain("npx devflow install");
+  it("should not use unscoped npx devflow install as the sole install method", () => {
+    // "npx devflow install" without the scoped package would fail because
+    // "devflow" doesn't exist on npm. It is only valid AFTER local install
+    // (npm install --save-dev @tjsasakinpm/devflow), where npx resolves
+    // the local binary. Verify the README teaches local install first.
+    const localInstall = readmeContent.indexOf("npm install --save-dev @tjsasakinpm/devflow");
+    const firstNpxDevflow = readmeContent.indexOf("npx devflow install");
+    // If "npx devflow install" appears, it must be AFTER the local install instruction
+    if (firstNpxDevflow > 0) {
+      expect(localInstall).toBeGreaterThan(0);
+      expect(localInstall).toBeLessThan(firstNpxDevflow);
+    }
   });
 
   it("should not reference old package name @devflow/cli", () => {
@@ -114,5 +122,37 @@ describe("README.md Validation", () => {
       // init is the technical alternative for scripts
       expect(installSection).toMatch(/script|automation|Technical/);
     }
+  });
+
+  it("should not show bare devflow command after remote npx invocation without intermediate install", () => {
+    // In the "Try without installing" section, every command after the
+    // initial npx -y @tjsasakinpm/devflow@latest install MUST use the full
+    // npx -y @tjsasakinpm/devflow@latest prefix, NOT bare `devflow`.
+    const trySection = readmeContent.match(/Try without installing[\s\S]*?(?=### |\[Full)/);
+    if (trySection) {
+      // After the install line, there should be no bare `devflow ` commands
+      const linesAfterInstall = trySection[0].split("\n");
+      const installIdx = linesAfterInstall.findIndex(
+        (l: string) => l.includes("install") && l.includes("@tjsasakinpm/devflow"),
+      );
+      if (installIdx >= 0) {
+        const afterInstall = linesAfterInstall.slice(installIdx + 1).join("\n");
+        // Lines starting with `devflow ` (bare command) should not appear
+        // unless prefixed with npx
+        const bareDevflowLines = afterInstall
+          .split("\n")
+          .filter((l: string) => /^\s*devflow\s+\w+/.test(l.trim()));
+        expect(bareDevflowLines).toHaveLength(0);
+      }
+    }
+  });
+
+  it("should recommend local install as devDependency as the primary method", () => {
+    // Local install should appear before the "Try without installing" section
+    const localIdx = readmeContent.indexOf("npm install --save-dev @tjsasakinpm/devflow");
+    const tryIdx = readmeContent.indexOf("Try without installing");
+    expect(localIdx).toBeGreaterThan(0);
+    expect(tryIdx).toBeGreaterThan(0);
+    expect(localIdx).toBeLessThan(tryIdx);
   });
 });

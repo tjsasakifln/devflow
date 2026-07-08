@@ -7,6 +7,7 @@ import { computeRecommendation } from "../engine/next-action.js";
 import { generateCockpit } from "../cockpit/generator.js";
 import { fileExists, ensureDir } from "../utils/fs.js";
 import { getVersion } from "../kernel/utils/version.js";
+import { resolveInvocationCommand } from "../kernel/utils/cli-resolver.js";
 import { renderRemediation } from "../errors/remediation.js";
 import type { Remediation } from "../errors/remediation.js";
 import pc from "picocolors";
@@ -25,6 +26,7 @@ export async function doctorCommand(
 ): Promise<void> {
   const rootPath = path.resolve(cwd);
   const checks: DoctorCheck[] = [];
+  const resolved = await resolveInvocationCommand(rootPath);
 
   console.log(pc.bold("\nDevflow Doctor — Guided Rescue\n"));
   console.log(pc.dim("═".repeat(55)));
@@ -105,10 +107,10 @@ export async function doctorCommand(
         title: "Devflow not initialized",
         whyMatters: "All Devflow state, checks, and audits live in .devflow/. Without it, nothing works.",
         impact: "No commands except init and doctor will function.",
-        suggestedFix: "Run `devflow install` to scaffold the project.",
-        minimalExample: "devflow install",
+        suggestedFix: `Run \`${resolved.command} install\` to scaffold the project.`,
+        minimalExample: `${resolved.command} install`,
         severity: "blocking",
-        copyableCommand: "devflow install",
+        copyableCommand: `${resolved.command} install`,
       },
     });
   }
@@ -133,10 +135,10 @@ export async function doctorCommand(
               title: "state.json out of sync",
               whyMatters: "Devflow's state machine drives all recommendations; stale state means wrong advice.",
               impact: "`devflow next` and `devflow status` will show incorrect diagnostics.",
-              suggestedFix: "Run `devflow update-cockpit` or `devflow doctor --fix` to regenerate state.",
-              minimalExample: "devflow update-cockpit",
+              suggestedFix: `Run \`${resolved.command} update-cockpit\` or \`${resolved.command} doctor --fix\` to regenerate state.`,
+              minimalExample: `${resolved.command} update-cockpit`,
               severity: "blocking",
-              copyableCommand: "devflow update-cockpit",
+              copyableCommand: `${resolved.command} update-cockpit`,
             },
           });
         }
@@ -306,10 +308,10 @@ export async function doctorCommand(
               title: "DEVFLOW.md is stale",
               whyMatters: "Agents read DEVFLOW.md for context before coding. Stale context leads to wrong assumptions.",
               impact: "Claude/Cursor may generate code based on outdated state.",
-              suggestedFix: "Run `devflow update-cockpit` to regenerate.",
-              minimalExample: "devflow update-cockpit",
+              suggestedFix: `Run \`${resolved.command} update-cockpit\` to regenerate.`,
+              minimalExample: `${resolved.command} update-cockpit`,
               severity: "advisory",
-              copyableCommand: "devflow update-cockpit",
+              copyableCommand: `${resolved.command} update-cockpit`,
             },
           });
           if (canFix) {
@@ -523,6 +525,102 @@ export async function doctorCommand(
     }
   }
 
+  // ── 17. CLI Invocability ──
+  {
+    const isDevflowProject = await fileExists(path.join(rootPath, ".devflow", "config.json"));
+    if (isDevflowProject) {
+      if (resolved.mode === "none") {
+        const hasPackageJson = await fileExists(pkgPath);
+        let inDevDeps = false;
+        let inDeps = false;
+        if (hasPackageJson) {
+          try {
+            const { readFile } = await import("node:fs/promises");
+            const pkgRaw = await readFile(pkgPath, "utf-8");
+            const pkg = JSON.parse(pkgRaw);
+            inDevDeps = "@tjsasakinpm/devflow" in (pkg.devDependencies || {});
+            inDeps = "@tjsasakinpm/devflow" in (pkg.dependencies || {});
+          } catch { /* ignore parse errors */ }
+        }
+
+        if (canFix && hasPackageJson && (inDevDeps || inDeps)) {
+          // Package in deps — add npm scripts for convenience
+          try {
+            const { readFile, writeFile } = await import("node:fs/promises");
+            const pkgRaw = await readFile(pkgPath, "utf-8");
+            const pkg = JSON.parse(pkgRaw);
+            pkg.scripts = pkg.scripts || {};
+            const scriptsToAdd: Record<string, string> = {
+              devflow: "devflow",
+              "devflow:status": "devflow status",
+              "devflow:doctor": "devflow doctor",
+              "devflow:audit": "devflow audit",
+              "devflow:next": "devflow next",
+            };
+            let added = 0;
+            for (const [name, cmd] of Object.entries(scriptsToAdd)) {
+              if (!pkg.scripts[name]) {
+                pkg.scripts[name] = cmd;
+                added++;
+              }
+            }
+            await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+            checks.push({
+              id: 17, name: "CLI Invocability", status: "FIXED",
+              message: `Added ${added} npm scripts: devflow, devflow:status, devflow:doctor, devflow:audit, devflow:next`,
+            });
+          } catch {
+            checks.push({
+              id: 17, name: "CLI Invocability", status: "FAIL",
+              message: "Could not write npm scripts to package.json",
+            });
+          }
+        } else if (canFix && hasPackageJson && !inDevDeps && !inDeps) {
+          checks.push({
+            id: 17, name: "CLI Invocability", status: "FAIL",
+            message: "Devflow state exists but CLI not persistently installed",
+            remediation: {
+              title: "Devflow is not installed persistently",
+              whyMatters: "Without a persistent install, `devflow` commands only work during npx sessions.",
+              impact: "You cannot run `devflow` commands after npx exits. All workflow and CI usage requires a local install.",
+              suggestedFix: "Install as devDependency: npm install --save-dev @tjsasakinpm/devflow",
+              minimalExample: "npm install --save-dev @tjsasakinpm/devflow",
+              severity: "advisory",
+              copyableCommand: "npm install --save-dev @tjsasakinpm/devflow",
+            },
+          });
+        } else {
+          const installCmd = hasPackageJson
+            ? "npm install --save-dev @tjsasakinpm/devflow"
+            : "npm install -g @tjsasakinpm/devflow";
+          checks.push({
+            id: 17, name: "CLI Invocability", status: "FAIL",
+            message: "Devflow state exists, but the bare `devflow` command is not invocable in this shell",
+            remediation: {
+              title: "Devflow CLI not persistently available",
+              whyMatters: "After npx exits, the `devflow` command is no longer available. All ongoing usage requires a persistent install.",
+              impact: "You cannot run devflow commands after npx exits. CI, git hooks, and team workflows require local install.",
+              suggestedFix: `Install Devflow persistently: ${installCmd}`,
+              minimalExample: installCmd,
+              severity: "advisory",
+              copyableCommand: installCmd,
+            },
+          });
+        }
+      } else {
+        checks.push({
+          id: 17, name: "CLI Invocability", status: "PASS",
+          message: `Available via: ${resolved.command}`,
+        });
+      }
+    } else {
+      checks.push({
+        id: 17, name: "CLI Invocability", status: "INFO",
+        message: "Devflow not initialized in this project",
+      });
+    }
+  }
+
   // ── Print results ──
   console.log(pc.bold("Diagnostic Results:\n"));
 
@@ -572,6 +670,6 @@ export async function doctorCommand(
 
   if (failed === 0) {
     console.log(pc.bold("Next step:"));
-    console.log(pc.dim("  Run `devflow next` to see the recommended action.\n"));
+    console.log(pc.dim(`  Run \`${resolved.command} next\` to see the recommended action.\n`));
   }
 }
