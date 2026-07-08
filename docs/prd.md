@@ -1,8 +1,8 @@
 # Devflow — Brownfield PRD
 
 > **Versão:** 1.0.0 | **Autor:** Morgan (PM) | **Data:** 2026-07-08
-> **Status:** Draft
-> **Projeto:** `@tjsasakinpm/devflow` v0.4.6
+> **Status:** Completed — 4 epics, 15 stories, 813 testes, 0 type errors, 0 vulnerabilidades
+> **Projeto:** `@tjsasakinpm/devflow` v1.0.0
 
 ---
 
@@ -30,32 +30,45 @@ código para serviços externos.
 | **Linguagem** | TypeScript 5.6 |
 | **Runtime** | Node.js >= 18 |
 | **Build** | `tsc` |
-| **Testes** | Vitest — 18 arquivos, 194 testes, todos passando |
-| **LOC** | ~23,550 (14,437 src/ + 9,214 kernel/) |
+| **Testes** | Vitest — 67 arquivos, 813 testes, todos passando |
+| **LOC** | ~35,000 (src/ + test/) |
 | **Pacote** | npm público |
 | **CI/CD** | GitHub Actions (documentado, CI runner local-first) |
+| **Status check** | < 2s |
 
-#### Estrutura de Módulos
+#### Estrutura de Módulos (v1.0.0 — pós-consolidação)
 
 ```
 src/
 ├── main.ts              # Entry point, Commander.js program
 ├── cli/                 # CLI commands (audit, review-pr)
-├── commands/            # Business logic por comando (14 stable + 2 experimental)
-├── engine/              # State detector, confidence scorer, validators, next-action
-├── kernel/              # Refactoring em progresso (39% migrado)
+├── commands/            # 25+ comandos (14 stable originais + 9 ex-PREVIEW + novos)
+├── kernel/              # Kernel consolidado (100% migrado)
+│   ├── workflow/        # Engine, agent-delegation, authority-enforcer, handoff,
+│   │                      loader, persistence, agent-spawner
+│   ├── orchestration/   # Parallel-spawner, adversarial-verify,
+│   │                      completeness-critic, agent-runner, result-merger
+│   ├── discovery/       # Scout, archaeologist, detective, architect, writer,
+│   │                      schema-extractor, orchestrator
 │   ├── validators/      # loop, oo, semantic, structural
-│   ├── dod/             # 8 checks (requirements, roadmap, actions, constitution, tests, typecheck, lint, coverage)
+│   ├── dod/             # 8 checks (requirements, roadmap, actions, constitution,
+│   │                      tests, typecheck, lint, coverage)
 │   ├── audit/           # Chain verifier, generator
 │   ├── evidence/        # Confidence scorer, gatherer
 │   ├── constitution/    # Checker, loader, defaults (12 artigos)
-│   └── ...
-├── artifacts/           # Templates de documentos (requirements.md, roadmap.md, etc.)
-├── adapters/            # Git, stacks (TS, Python, Go, Rust), modelos (Anthropic, OpenAI, Ollama)
-├── guards/              # Pipeline, pre-action, refusal
+│   ├── cockpit/         # DEVFLOW.md generator
+│   ├── artifacts/       # Templates, validator, tool-configs
+│   ├── guards/          # Pipeline, pre-action, refusal
+│   ├── state/           # State detector, transitions
+│   ├── config/          # AI config, defaults
+│   ├── ci/              # CI verifier
+│   ├── types/           # Type definitions
+│   └── utils/           # fs, git, hash, logger, version, markdown, prompts
+├── core/                # Audit engine, policy, evidence, DoD engine
+├── adapters/            # Git, stacks (TS, Python, Go, Rust), modelos
+│                         (Anthropic, OpenAI, Ollama), crew, process
 ├── renderers/           # Output: JSON, markdown, HTML, badges
-├── intelligence/        # LangGraph state, RAG context, read-only tools
-└── types/               # Type definitions
+└── intelligence/        # LangGraph state, RAG context, read-only tools
 ```
 
 #### Disponibilidade de Documentação
@@ -92,23 +105,23 @@ lint, typecheck — o Devflow bloqueia se não rodar. Não precisa decidir entre
 começar com requirements ou design — o Devflow impõe a sequência correta para o
 contexto (greenfield vs brownfield, feature vs bugfix, solo vs time).
 
-**Impact Assessment:** Significant Impact (architectural changes required)
+**Impact Assessment:** Completed (v1.0.0).
 
-A migração kernel precisa ser concluída. Os 9 comandos PREVIEW precisam ser
-implementados. A arquitetura de state machine precisa ser robustecida para suportar
-workflows compostos (ex: encadear brownfield discovery → epic creation → story
-implementation → QA gate).
+A migração kernel foi concluída (Epic 1). Os 9 comandos PREVIEW foram implementados
+com lógica real (Epic 4). A arquitetura de state machine foi robustecida com workflow
+engine universal (Epic 2). Multi-agent orchestration implementada com parallel spawner,
+adversarial verify, e completeness critic (Epic 3).
 
-### 1.3 Goals
+### 1.3 Goals (✅ Todos atingidos)
 
-- Eliminar atrito cognitivo — `devflow next` sempre sabe o próximo passo
-- Unificar greenfield e brownfield sob o mesmo state machine engine
-- Completar migração kernel (eliminar duplicação src/ ↔ src/kernel/)
-- Implementar 9 comandos PREVIEW com lógica real
-- Adicionar multi-agent orchestration (fan-out para análises paralelas)
-- Integrar padrão Reversa como workflow brownfield oficial
-- Subir coverage de testes para >= 80%
-- Publicar v1.0.0 como ferramenta estável e completa
+- ✅ Eliminar atrito cognitivo — `devflow next` sempre sabe o próximo passo
+- ✅ Unificar greenfield e brownfield sob o mesmo state machine engine
+- ✅ Completar migração kernel (eliminar duplicação src/ ↔ src/kernel/)
+- ✅ Implementar 9 comandos PREVIEW com lógica real
+- ✅ Adicionar multi-agent orchestration (fan-out para análises paralelas)
+- ✅ Integrar padrão Reversa como workflow brownfield oficial
+- ✅ Subir coverage de testes para >= 80%
+- ✅ Publicar v1.0.0 como ferramenta estável e completa
 
 ### 1.4 Background Context
 
@@ -131,6 +144,7 @@ o usuário.
 | Change | Date | Version | Description | Author |
 |--------|------|---------|-------------|--------|
 | Initial | 2026-07-08 | 1.0.0 | Brownfield PRD creation | Morgan (PM) |
+| Completed | 2026-07-08 | 1.0.0 | 4 epics, 15 stories, 813 testes, release publicado | Devflow |
 
 ---
 
