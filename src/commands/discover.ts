@@ -1,28 +1,64 @@
 /**
  * Brownfield Discovery Command
  *
- * Generates four discovery reports in _devflow/discovery/:
- *   1. system-map.md     — structure, entrypoints, modules, dependencies
- *   2. risk-map.md       — sensitive files, coupling, TODO/FIXME, untested areas
- *   3. testing-baseline.md — how to run tests/lint/typecheck, current state
- *   4. change-zones.md   — safe / caution / no-touch zone classification
+ * Two modes:
+ *   1. Classic mode (default) — generates 4 reports: system-map.md, risk-map.md,
+ *      testing-baseline.md, change-zones.md
+ *   2. Deep mode — 5-phase orchestrated workflow: scout → archaeologist →
+ *      detective → architect → writer. Output in _devflow/discovery/.
+ *
+ * Use --phase=<name> to run a single phase from the deep workflow.
+ * Use default mode (no flags) for the classic 4-report output.
  */
 
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
+import pc from "picocolors";
 import { detectStackProfile } from "../kernel/detection/stack.js";
 import type { StackProfile } from "../kernel/detection/stack.js";
 import { scanFiles } from "../adapters/project/file-scanner.js";
 import { fileExists, safeReadFile } from "../kernel/utils/fs.js";
-import pc from "picocolors";
+import { runDiscovery } from "../kernel/discovery/orchestrator.js";
+import type { PhaseName } from "../kernel/discovery/orchestrator.js";
+import { CompletenessCritic } from "../kernel/orchestration/completeness-critic.js";
+import type { AnalysisContext } from "../kernel/orchestration/completeness-critic.js";
 
-export async function discoverCommand(rootPath: string): Promise<void> {
+const VALID_PHASES: PhaseName[] = ["scout", "archaeologist", "detective", "architect", "writer"];
+
+export interface DiscoverOptions {
+  phase?: string;
+}
+
+export async function discoverCommand(rootPath: string, options?: DiscoverOptions): Promise<void> {
+  const phase = options?.phase as PhaseName | undefined;
+
+  if (phase) {
+    // Deep discovery with single phase
+    if (!VALID_PHASES.includes(phase)) {
+      console.log(pc.red(`Invalid phase: "${phase}"`));
+      console.log(pc.dim(`Valid phases: ${VALID_PHASES.join(", ")}`));
+      console.log(pc.dim("Usage: devflow discover --phase=<name>"));
+      return;
+    }
+
+    console.log(pc.bold(`\nDevflow Discover — Phase: ${phase}\n`));
+    await runDiscovery({ phase, rootPath });
+    return;
+  }
+
+  // Full discovery — use the 5-phase orchestrated workflow
   const discoveryDir = path.join(rootPath, "_devflow", "discovery");
   await mkdir(discoveryDir, { recursive: true });
 
   console.log(pc.bold("\nDevflow Discover — Brownfield Analysis\n"));
-  console.log(pc.dim("Scanning project structure, risks, tooling, and change safety...\n"));
+  console.log(pc.dim("Running 5-phase deep discovery workflow...\n"));
+
+  // Run the full 5-phase orchestrated workflow
+  await runDiscovery({ rootPath });
+
+  // Also generate classic 4 reports for backward compatibility
+  console.log(pc.dim("\nGenerating classic reports...\n"));
 
   const stack = await detectStackProfile(rootPath);
   const scanner = await scanFiles(rootPath);
@@ -49,16 +85,81 @@ export async function discoverCommand(rootPath: string): Promise<void> {
 
   console.log(pc.green("\n✅ Discovery complete!\n"));
   console.log(pc.bold("Reports generated in:"), discoveryDir);
-  console.log(`  ${pc.dim("→")} system-map.md       — structure, entrypoints, modules`);
-  console.log(`  ${pc.dim("→")} risk-map.md         — sensitive files, coupling, risks`);
-  console.log(`  ${pc.dim("→")} testing-baseline.md  — test/lint/typecheck commands & state`);
-  console.log(`  ${pc.dim("→")} change-zones.md     — safe / caution / no-touch classification`);
+  console.log(`  ${pc.dim("→")} scout-report.md           — project structure scan`);
+  console.log(`  ${pc.dim("→")} archaeology-report.md     — code complexity analysis`);
+  console.log(`  ${pc.dim("→")} detective-report.md       — business logic analysis`);
+  console.log(`  ${pc.dim("→")} architecture-reconstruction.md — C4 diagrams, integrations`);
+  console.log(`  ${pc.dim("→")} SCHEMA.md                 — database schema (if detected)`);
+  console.log(`  ${pc.dim("→")} system-architecture.md    — consolidated system map`);
+  console.log(`  ${pc.dim("→")} technical-debt.md         — tech debt assessment`);
+  console.log(`  ${pc.dim("→")} TECHNICAL-DEBT-REPORT.md  — executive tech debt report`);
+  console.log(`  ${pc.dim("→")} consolidated-spec.md      — executable specifications`);
+  console.log(`  ${pc.dim("→")} system-map.md             — classic structure report`);
+  console.log(`  ${pc.dim("→")} risk-map.md               — classic risk assessment`);
+  console.log(`  ${pc.dim("→")} testing-baseline.md        — classic testing report`);
+  console.log(`  ${pc.dim("→")} change-zones.md           — classic change safety zones`);
   console.log();
+
+  // ── Run Completeness Critic after discovery ──
+  try {
+    const critic = new CompletenessCritic(rootPath, {
+      maxIterations: 3,
+      dryThreshold: 2,
+      useSpawner: false,
+    });
+
+    const criticContext: AnalysisContext = {
+      rootPath,
+      analyzedDimensions: [],
+      inspectedFiles: [],
+    };
+
+    const criticReport = await critic.fullCritique(criticContext);
+
+    if (criticReport.hasGaps) {
+      console.log(pc.bold("\nCOMPLETENESS CRITIC"));
+      console.log(pc.dim("  Post-discovery gap analysis:\n"));
+
+      const dimGaps = criticReport.byType["dimension_not_covered"];
+      if (dimGaps.length > 0) {
+        console.log(pc.yellow(`  ${dimGaps.length} dimension(s) not covered:`));
+        for (const g of dimGaps.slice(0, 5)) {
+          console.log(`    ${pc.dim("⚠")} ${g.description}`);
+        }
+        console.log();
+      }
+
+      const srcGaps = criticReport.byType["source_not_read"];
+      if (srcGaps.length > 0) {
+        console.log(pc.cyan(`  ${srcGaps.length} source gap(s):`));
+        for (const g of srcGaps.slice(0, 5)) {
+          console.log(`    ${pc.dim("→")} ${g.description}`);
+        }
+        if (srcGaps.length > 5) {
+          console.log(`    ${pc.dim("→ ... and " + (srcGaps.length - 5) + " more")}`);
+        }
+        console.log();
+      }
+
+      console.log(pc.dim(`  (${criticReport.totalIterations} iteration(s), ${Math.round(criticReport.durationMs / 1000)}s)\n`));
+    } else {
+      console.log(pc.green("\nCOMPLETENESS CRITIC: No gaps found\n"));
+    }
+  } catch (err) {
+    // Critic is best-effort after discovery
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(pc.dim(`\nCompleteness critic skipped: ${msg}\n`));
+  }
+
   console.log(pc.dim("Next: devflow feature new <name> to start a brownfield feature."));
-  console.log(pc.dim("      The feature will reference these discovery reports.\n"));
+  console.log(pc.dim("      Use --phase=<name> to re-run individual phases.\n"));
 }
 
-// ── Report Builders ──
+// =============================================================================
+// Classic Report Builders (kept for backward compatibility)
+// =============================================================================
+
+export { buildSystemMap, buildRiskMap, buildTestingBaseline, buildChangeZones };
 
 async function buildSystemMap(
   rootPath: string,
@@ -258,7 +359,6 @@ async function buildRiskMap(
   try {
     const sourceDir = stack.sourceDir || "src";
     const testDir = stack.testDir || "test";
-    // Find source files that don't have a corresponding test file
     const sourceExt = stack.language === "typescript" ? "ts" :
       stack.language === "python" ? "py" :
       stack.language === "go" ? "go" :
@@ -534,7 +634,7 @@ async function buildChangeZones(
   const largeFilePaths = new Set(largeFiles.map((f) => f.path));
 
   // Get TODO/FIXME files
-  let todoFiles = new Set<string>();
+  const todoFiles = new Set<string>();
   try {
     const sourceDir = stack.sourceDir || "src";
     const todoOutput = execSync(

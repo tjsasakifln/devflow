@@ -33,9 +33,12 @@ program.action(async (options) => {
 
 // Parse and handle errors gracefully
 try {
-  // Handle --list-tiers before full parse
+  // Handle --list-tiers (deprecated as of v1.0.0)
   if (process.argv.includes("--list-tiers")) {
-    printTierList();
+    console.log(pc.bold("\nDevflow Command Tiers"));
+    console.log(pc.dim("\nAll commands are STABLE as of v1.0.0."));
+    console.log(pc.dim("The tier system (PREVIEW/EXPERIMENTAL/STABLE) has been eliminated.\n"));
+    console.log(pc.dim("Run `devflow --help` to see all available commands.\n"));
     process.exit(0);
   }
   await program.parseAsync(process.argv);
@@ -45,55 +48,4 @@ try {
   console.error(pc.red(`\nError: ${message}\n`));
   console.error(pc.dim("Run `devflow doctor` to diagnose issues.\n"));
   process.exit(1);
-}
-
-function printTierList(): void {
-  console.log(pc.bold("\nDevflow Command Tiers\n"));
-  console.log("Commands are classified by implementation maturity:\n");
-
-  const tiers = [
-    {
-      label: pc.green("STABLE      "),
-      desc: "Fully implemented and tested.",
-      commands: [
-        "audit",
-        "init", "status", "next",
-        "feature new", "feature complete", "feature prompt",
-        "gatekeep", "adversarial-review", "review-pr",
-        "doctor", "update-cockpit", "index",
-        "config",
-      ],
-    },
-    {
-      label: pc.yellow("EXPERIMENTAL"),
-      desc: "Partial implementation. May have rough edges.",
-      commands: ["discover", "eval run"],
-    },
-    {
-      label: pc.red("PREVIEW     "),
-      desc: "Placeholder. Prints intention but does not execute real logic.",
-      commands: [
-        "ai init",
-        "requirements audit",
-        "design review",
-        "tests review",
-        "actions generate",
-        "drift check",
-        "adversarial-review-ai",
-        "trace",
-        "promote",
-      ],
-    },
-  ];
-
-  for (const tier of tiers) {
-    console.log(`  ${tier.label}  ${tier.desc}`);
-    for (const cmd of tier.commands) {
-      console.log(`              devflow ${cmd}`);
-    }
-    console.log("");
-  }
-
-  console.log(pc.dim("Preview commands will be implemented in Phase 3 of the Devflow roadmap."));
-  console.log(pc.dim("Use 'devflow next' to see the recommended workflow for your current state.\n"));
 }

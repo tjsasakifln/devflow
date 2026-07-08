@@ -1,0 +1,12 @@
+schema: 1
+story: '2.1'
+gate: PASS
+status_reason: 'Design artifact complete and validated: 35 states, 73 transitions, 52 guards, 39 effects across 4 workflows. All cross-references verified. Mermaid visualization generated.'
+reviewer: 'Quinn'
+updated: '2026-07-08T11:20:00Z'
+top_issues:
+  - id: 'DOC-001'
+    severity: low
+    finding: 'Story claims 38 effects but YAML spec contains 39 (logVerificationFailure was added during Story 2.2 implementation and backported to the spec).'
+    suggested_action: 'Update story description to reflect 39 effects, or document that logVerificationFailure was added by 2.2.'
+waiver: { active: false }

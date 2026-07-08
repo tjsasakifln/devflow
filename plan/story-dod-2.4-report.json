@@ -1,0 +1,47 @@
+{
+  "storyId": "2.4",
+  "storyPath": "docs/stories/2.4.agent-driven-development-workflow.md",
+  "validatedAt": "2026-07-08T10:06:30Z",
+  "status": "approve",
+  "checklist": {
+    "requirementsMet": {
+      "allFunctionalRequirementsImplemented": true,
+      "allAcceptanceCriteriaMet": true,
+      "details": [
+        "AC1: Agent delegation matrix implemented in agent-delegation.ts (PM->SM->PO->Dev->QA->DevOps pipeline + extended roles)",
+        "AC2: agent: <role> tag support added to TransitionDef in types.ts, engine processes agent tags in executeTransition",
+        "AC3: Handoff protocol <500 tokens implemented in handoff.ts with YAML generation, token estimation, size validation",
+        "AC4: Agent spawning as subprocess in agent-spawner.ts with git worktree support (optional, fallback to simple spawn)",
+        "AC5: Authority enforcement in authority-enforcer.ts with 10 agent roles, 40+ operations, default-deny policy",
+        "IV1: Multi-agent flow validated — full pipeline delegation sequence passes",
+        "IV2: Handoff artifacts generated between every agent transition — verified in E2E test",
+        "IV3: Agent without authority gets blocked with clear message — verified in test (Dev tries invalid transition)"
+      ]
+    },
+    "codingStandards": {
+      "adheresToPatterns": true,
+      "typeScriptErrors": "zero new errors (pre-existing errors in other files unchanged)",
+      "testCoverage": "73 tests covering all 6 new modules",
+      "details": [
+        "Files follow existing src/kernel/workflow/ structure and patterns",
+        "ESM imports consistent with project",
+        "JSDoc on all public functions",
+        "No new dependencies added"
+      ]
+    },
+    "testing": {
+      "unitTests": "73 tests passed",
+      "integrationTests": "Engine-agent integration tests pass",
+      "e2eTests": "Multi-agent pipeline E2E tests pass",
+      "edgeCases": "Empty arrays, unknown roles, missing files, corrupted state, backward compat"
+    },
+    "documentation": {
+      "storyUpdated": true,
+      "fileListAdded": true,
+      "changeLogUpdated": true,
+      "codeComments": true
+    }
+  },
+  "verdict": "APPROVED",
+  "summary": "Story 2.4 fully implemented: agent-delegation.ts (delegation matrix + graph), agent-spawner.ts (subprocess spawn + worktree), handoff.ts (YAML artifact <500 tokens), authority-enforcer.ts (10 roles, 40+ operations), engine integration (agent-tagged transitions, handoff generation), and 73 comprehensive tests."
+}

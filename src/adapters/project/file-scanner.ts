@@ -13,23 +13,30 @@ export interface ScannerResult {
 }
 
 export async function scanFiles(rootPath: string): Promise<ScannerResult> {
-  const hasPackageJson = await fileExists(path.join(rootPath, "package.json"));
-  const hasSrcDir = await isDirectory(path.join(rootPath, "src"));
-  const hasTestDir = await isDirectory(path.join(rootPath, "test"));
-  const hasTsConfig = await fileExists(path.join(rootPath, "tsconfig.json"));
+  // Parallelize independent file existence checks
+  const [hasPackageJson, hasSrcDir, hasTestDir, hasTsConfig, pkgMgrResult, frameworkResult, langResult] = await Promise.all([
+    fileExists(path.join(rootPath, "package.json")),
+    isDirectory(path.join(rootPath, "src")),
+    isDirectory(path.join(rootPath, "test")),
+    fileExists(path.join(rootPath, "tsconfig.json")),
+    detectPackageManager(rootPath),
+    detectFramework(rootPath),
+    detectLanguage(rootPath),
+  ]);
 
-  const packageManager = await detectPackageManager(rootPath);
-  const detectedFramework = await detectFramework(rootPath);
-  const language = await detectLanguage(rootPath);
+  const packageManager = pkgMgrResult;
+  const detectedFramework = frameworkResult;
+  const language = langResult;
 
-  // approximate file count (non-recursive for perf)
-  let fileCount = 0;
-  for (const dir of ["src", "lib", "app", "components", "pages"]) {
-    const dirPath = path.join(rootPath, dir);
-    if (await isDirectory(dirPath)) {
-      fileCount += await countFilesShallow(dirPath);
-    }
-  }
+  // approximate file count (non-recursive for perf) — run directory checks in parallel
+  const dirChecks = await Promise.all(
+    ["src", "lib", "app", "components", "pages"].map(async (dir) => {
+      const dirPath = path.join(rootPath, dir);
+      const exists = await isDirectory(dirPath);
+      return exists ? countFilesShallow(dirPath) : 0;
+    })
+  );
+  let fileCount = dirChecks.reduce((sum, c) => sum + c, 0);
 
   return {
     hasPackageJson,

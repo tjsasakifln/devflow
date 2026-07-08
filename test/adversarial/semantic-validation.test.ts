@@ -5,8 +5,8 @@ import {
   validateRoadmapSemantic,
   validateActionsSemantic,
   validateTestPlanSemantic,
-} from "../../src/engine/semantic-validator.js";
-import { validateRequirements } from "../../src/artifacts/validator.js";
+} from "../../src/kernel/validators/semantic.js";
+import { validateRequirements } from "../../src/kernel/artifacts/validator.js";
 
 describe("Adversarial — Semantic Validation", () => {
   it("generic-filler requirements score below 60", async () => {

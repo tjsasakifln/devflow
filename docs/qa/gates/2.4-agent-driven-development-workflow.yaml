@@ -1,0 +1,8 @@
+schema: 1
+story: '2.4'
+gate: PASS
+status_reason: 'Agent-driven workflow fully implemented: delegation matrix, agent-tagged transitions, handoff protocol (<500 tokens), authority enforcement (default-deny), subprocess spawning. 742 test cases pass. TypeScript compiles clean.'
+reviewer: 'Quinn'
+updated: '2026-07-08T11:20:00Z'
+top_issues: []
+waiver: { active: false }

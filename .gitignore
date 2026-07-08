@@ -18,6 +18,18 @@ CLAUDE.md
 .agents/
 .playwright-mcp/
 
+# AIOX framework (installed tooling — not project source)
+.aiox-core/
+.aiox/
+
+# External AI tools (local config — not project source)
+.antigravity/
+.codex/
+.cursor/
+.gemini/
+.github/agents/
+.kimi/
+
 # Devflow (local project state — auto-generated, not part of source)
 .devflow/
 _devflow/
@@ -25,3 +37,27 @@ DEVFLOW.md
 
 # Test coverage
 coverage/
+
+# Environment & Secrets (AIOX)
+.env.*.local
+*.key
+*.pem
+
+# Dependencies (AIOX)
+node_modules
+
+# Build & Logs (AIOX)
+build/
+*.log
+logs/
+
+# IDE & OS (AIOX)
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+
+# AIOX Local (AIOX)
+.aiox-core/local/
+.claude/settings.local.json
+.aiox/install-log.txt

@@ -13,15 +13,15 @@ export async function inspectProject(
   const scanner = await scanFiles(resolvedRoot);
   const git = inspectGit(resolvedRoot);
 
-  const hasDotDevflow = await fileExists(
-    path.join(resolvedRoot, ".devflow", "config.json")
-  );
   const devArtifactsPath = path.join(resolvedRoot, "_devflow");
-  const hasDevArtifacts = await fileExists(devArtifactsPath);
-  const hasDevflowMd = await fileExists(path.join(resolvedRoot, "DEVFLOW.md"));
-  const hasClaudeMd = await fileExists(
-    path.join(resolvedRoot, "CLAUDE.md")
-  );
+
+  // Parallelize independent file existence checks
+  const [hasDotDevflow, hasDevArtifacts, hasDevflowMd, hasClaudeMd] = await Promise.all([
+    fileExists(path.join(resolvedRoot, ".devflow", "config.json")),
+    fileExists(devArtifactsPath),
+    fileExists(path.join(resolvedRoot, "DEVFLOW.md")),
+    fileExists(path.join(resolvedRoot, "CLAUDE.md")),
+  ]);
 
   const features = hasDevArtifacts
     ? await detectFeatures(resolvedRoot, devArtifactsPath)

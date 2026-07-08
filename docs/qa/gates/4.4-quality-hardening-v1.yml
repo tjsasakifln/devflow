@@ -1,0 +1,16 @@
+schema: 1
+story: '4.4'
+gate: CONCERNS
+status_reason: 'Core kernel modules now at 80%+ coverage (validators 93%, detection 99%, CI 84%, orchestration 87%), but overall coverage is 35.56% due to structural gap in commands/cli modules that require integration-level testing.'
+reviewer: 'Quinn'
+updated: '2026-07-08T12:20:00Z'
+top_issues:
+  - id: 'TEST-002'
+    severity: medium
+    finding: 'Overall coverage at 35.56% (statements) and 31.97% (branches) — AC1 requires 80%. Commands/ (20+ files, 8.33%) and CLI/ (3 files, 0.94%) modules structurally cannot reach 80% through unit tests alone as they depend on filesystem, git, and child_process integration.'
+    suggested_action: 'Track as tech debt: add integration test suite for commands/ and CLI/ modules post-release. Consider coverage exclusions for CLI wrapper files if they are thin delegation layers.'
+  - id: 'TEST-003'
+    severity: low
+    finding: 'ParallelSpawner timeout test shows pre-existing flakiness (passes in isolation, fails in full suite) — race condition in timeout edge case.'
+    suggested_action: 'Investigate and stabilize the parallel-spawner-timeout test when working in that module next.'
+waiver: { active: false }

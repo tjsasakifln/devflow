@@ -1,0 +1,12 @@
+schema: 1
+story: '2.3'
+gate: CONCERNS
+status_reason: 'All 5 ACs implemented with clean phase modules. However, no automated unit tests exist for the 5 discovery phase modules — only manual smoke test coverage.'
+reviewer: 'Quinn'
+updated: '2026-07-08T11:20:00Z'
+top_issues:
+  - id: 'TEST-001'
+    severity: medium
+    finding: 'No unit tests for discovery phase modules (scout.ts, archaeologist.ts, detective.ts, architect.ts, writer.ts). Story relies solely on smoke test (`npx devflow discover`).'
+    suggested_action: 'Add unit tests for each phase module — at minimum test input/output contracts and edge cases per module.'
+waiver: { active: false }

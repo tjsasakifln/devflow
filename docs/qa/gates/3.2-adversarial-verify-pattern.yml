@@ -1,0 +1,8 @@
+schema: 1
+story: '3.2'
+gate: PASS
+status_reason: 'All acceptance criteria met. 39 tests pass covering all 3 lenses, threshold logic, dispute persistence, and IV1/IV2/IV3 scenarios. TypeScript typecheck clean. Correctly integrated with adversarial-review CLI flag.'
+reviewer: 'Quinn'
+updated: '2026-07-08T14:15:00Z'
+top_issues: []
+waiver: { active: false }

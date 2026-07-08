@@ -37,18 +37,43 @@ export function inspectGit(rootPath: string): GitInfo {
       hasRemote = false;
     }
 
-    const status = execSync("git status --porcelain", {
-      cwd: rootPath,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
+    // Use faster git status detection:
+    // git diff --quiet is much faster than git status --porcelain for dirty checking.
+    // execSync throws on non-zero exit (which is what --quiet uses for "has changes").
+    let gitStatus = "clean";
+    try {
+      // Check for staged or unstaged changes (fast - exit code only).
+      // execSync throws on non-zero exit; catch to handle "has changes" case.
+      let hasWorkingChanges = false;
+      try {
+        execSync("git diff --quiet HEAD", {
+          cwd: rootPath, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"],
+        });
+      } catch {
+        hasWorkingChanges = true;
+      }
 
-    let gitStatus: string;
-    if (status.length === 0) {
-      gitStatus = "clean";
-    } else if (status.split("\n").every((line) => line.startsWith("??"))) {
-      gitStatus = "untracked";
-    } else {
+      let hasStagedChanges = false;
+      try {
+        execSync("git diff --cached --quiet", {
+          cwd: rootPath, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"],
+        });
+      } catch {
+        hasStagedChanges = true;
+      }
+
+      if (hasWorkingChanges || hasStagedChanges) {
+        gitStatus = "dirty";
+      } else {
+        // Only check untracked if working tree is otherwise clean
+        const untracked = execSync("git ls-files --others --exclude-standard", {
+          cwd: rootPath, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"],
+        }).trim();
+        if (untracked.length > 0) {
+          gitStatus = "untracked";
+        }
+      }
+    } catch {
       gitStatus = "dirty";
     }
 

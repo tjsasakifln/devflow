@@ -17,6 +17,9 @@ import { featureComplete } from "../commands/feature-complete.js";
 import { featurePromptCommand } from "../commands/feature-prompt.js";
 import { gatekeep } from "../commands/gatekeep.js";
 import { adversarialReview } from "../commands/adversarial-review.js";
+import { adversarialReviewAI } from "../commands/adversarial-review-ai.js";
+import { traceCommand } from "../commands/trace.js";
+import { promoteCommand } from "../commands/promote.js";
 import { reviewPrCommand } from "./review-pr.js";
 import { doctorCommand } from "../commands/doctor.js";
 import { updateCockpitCommand } from "../commands/update-cockpit.js";
@@ -24,6 +27,13 @@ import { indexProject } from "../commands/index-project.js";
 import { discoverCommand } from "../commands/discover.js";
 import { runEvals } from "../commands/eval-run.js";
 import { auditCommand } from "./audit.js";
+import { aiInitCommand } from "../commands/ai-init.js";
+import { requirementsAuditCommand } from "../commands/requirements-audit.js";
+import { designReviewCommand } from "../commands/design-review.js";
+import { testsReviewCommand } from "../commands/tests-review.js";
+import { actionsGenerateCommand } from "../commands/actions-generate.js";
+import { driftCheckCommand } from "../commands/drift-check.js";
+import { analyzeCommand } from "../commands/analyze.js";
 import pc from "picocolors";
 
 /**
@@ -41,7 +51,7 @@ function renderPreviewStub(
 
   console.log("");
   console.log(`┌${border}┐`);
-  console.log(`│ ${pc.bold("[PREVIEW] Command Not Yet Implemented")}${" ".repeat(width - 40)}│`);
+  console.log(`│ ${pc.bold("[STUB] Command Not Yet Implemented")}${" ".repeat(width - 40)}│`);
   console.log(`│${" ".repeat(width + 2)}│`);
   console.log(`│ ${pc.cyan("Command:")}   ${commandName}${" ".repeat(Math.max(1, width - commandName.length - 11))}│`);
   console.log(`│ ${pc.cyan("Purpose:")}   ${description}${" ".repeat(Math.max(1, width - description.length - 11))}│`);
@@ -81,7 +91,7 @@ export function registerCommands(program: Command): void {
       });
     });
 
-  // ── Audit (STABLE) ──
+   // ── Audit ──
 
   program
     .command("audit")
@@ -238,8 +248,10 @@ export function registerCommands(program: Command): void {
   program
     .command("adversarial-review <featureId>")
     .description(`Adversarial review — attempt to reject the feature across ${ADVERSARIAL_VECTOR_COUNT} attack vectors`)
-    .action(async (featureId: string) => {
-      await adversarialReview(featureId, process.cwd());
+    .option("--verify-mode <mode>", "Verification mode: deterministic (default) or adversarial (multi-agent)", "deterministic")
+    .action(async (featureId: string, options: { verifyMode?: string }) => {
+      const verifyMode = options.verifyMode === "adversarial" ? "adversarial" : "deterministic";
+      await adversarialReview(featureId, process.cwd(), { verifyMode });
     });
 
   // review-pr
@@ -271,26 +283,20 @@ export function registerCommands(program: Command): void {
       await updateCockpitCommand(process.cwd());
     });
 
-  // ── AI Commands [PREVIEW] ──
+  // ── AI Commands  ──
 
   const aiCmd = program
     .command("ai")
-    .description("[PREVIEW] AI-assisted operations (requires provider configuration)");
+    .description(" AI-assisted operations — configure and manage AI providers");
 
   aiCmd
     .command("init")
-    .description("[PREVIEW] Configure AI provider and usage policy")
-    .option("--provider <provider>", "Model provider: openai, anthropic, openrouter, google, ollama")
-    .option("--model <model>", "Model name")
+    .description("Configure AI provider connections (Anthropic, OpenAI, Ollama) and save to .env")
+    .option("--provider <provider>", "Specific provider to configure: anthropic, openai, ollama (omit for all)")
+    .option("-y, --yes", "Skip prompts — validate existing keys only")
     .action(async (options) => {
-      renderPreviewStub(
-        "devflow ai init",
-        "AI provider configuration",
-        "Planned. Not built yet.",
-        "Set environment variables manually: OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.",
-      );
-      console.log(pc.dim(`  Provider: ${options.provider ?? "ollama"} (not persisted)`));
-      console.log(pc.dim(`  Model: ${options.model ?? "llama3.2"} (not persisted)`));
+      const providers = options.provider ? [options.provider] : undefined;
+      await aiInitCommand(process.cwd(), { providers, yes: options.yes ?? false });
     });
 
   // ── Indexing ──
@@ -303,12 +309,13 @@ export function registerCommands(program: Command): void {
       await indexProject(process.cwd());
     });
 
-  // ── Discovery [EXPERIMENTAL] ──
+  // ── Discovery ──
 
   program
     .command("discover")
-    .description("[EXPERIMENTAL] Discover and document brownfield project structure, risks, testing baseline, and change zones")
+    .description("Discover and document brownfield project structure, risks, testing baseline, and change zones")
     .option("--ai", "Use AI-assisted discovery (not yet available)")
+    .option("--phase <name>", "Run a specific discovery phase: scout, archaeologist, detective, architect, writer")
     .action(async (options) => {
       if (options.ai) {
         renderPreviewStub(
@@ -318,128 +325,146 @@ export function registerCommands(program: Command): void {
           "Use devflow discover (without --ai) for structural discovery — generates 4 reports.",
         );
       } else {
-        await discoverCommand(process.cwd());
+        await discoverCommand(process.cwd(), { phase: options.phase });
       }
     });
 
-  // ── Requirements Audit [PREVIEW] ──
+  // ── Requirements Audit  ──
 
-  program
-    .command("requirements audit <featureId>")
-    .description("[PREVIEW] Audit requirements completeness and quality")
+  const requirementsCmd = program
+    .command("requirements")
+    .description("Manage and audit feature requirements");
+
+  requirementsCmd
+    .command("audit <featureId>")
+    .description("Audit requirements completeness and quality")
     .action(async (featureId: string) => {
-      renderPreviewStub(
-        `devflow requirements audit ${featureId}`,
-        "Requirements completeness audit",
-        "Planned. Not built yet.",
-        `Review _devflow/features/${featureId}/requirements.md manually. Run devflow next --diagnose for weak sections.`,
-      );
+      await requirementsAuditCommand(process.cwd(), { featureId });
     });
 
-  // ── Design Review [PREVIEW] ──
+  // ── Design Review  ──
 
-  program
-    .command("design review <featureId>")
-    .description("[PREVIEW] Review architectural design")
+  const designCmd = program
+    .command("design")
+    .description("Review feature architecture and design");
+
+  designCmd
+    .command("review <featureId>")
+    .description("Review architectural design — detect over-engineering and missing layers")
     .action(async (featureId: string) => {
-      renderPreviewStub(
-        `devflow design review ${featureId}`,
-        "Architectural design review",
-        "Planned. Not built yet.",
-        `Review _devflow/features/${featureId}/roadmap.md manually for architectural soundness.`,
-      );
+      await designReviewCommand(process.cwd(), { featureId });
     });
 
-  // ── Tests Review [PREVIEW] ──
+  // ── Tests Review  ──
 
-  program
-    .command("tests review <featureId>")
-    .description("[PREVIEW] Review test plan completeness")
+  const testsCmd = program
+    .command("tests")
+    .description("Test and coverage commands");
+
+  testsCmd
+    .command("review <featureId>")
+    .description("Review test plan completeness — detect gaps between test-plan.md and actual test files")
     .action(async (featureId: string) => {
-      renderPreviewStub(
-        `devflow tests review ${featureId}`,
-        "Test plan review",
-        "Planned. Not built yet.",
-        `Review _devflow/features/${featureId}/test-plan.md manually for coverage gaps.`,
-      );
+      await testsReviewCommand(process.cwd(), featureId);
     });
 
-  // ── Actions Generate [PREVIEW] ──
+  // ── Actions Generate  ──
 
-  program
-    .command("actions generate <featureId>")
-    .description("[PREVIEW] Generate actions.md from design documents")
-    .action(async (featureId: string) => {
-      renderPreviewStub(
-        `devflow actions generate ${featureId}`,
-        "Generate actions from design",
-        "Planned. Not built yet.",
-        `Use the actions template: copy templates/actions-template.md → _devflow/features/${featureId}/actions.md and fill in tasks.`,
-      );
+  const actionsCmd = program
+    .command("actions")
+    .description("Actions and workflow generation commands");
+
+  actionsCmd
+    .command("generate <featureId>")
+    .description("Generate GitHub Actions workflow from project config")
+    .option("--write", "Write the workflow file to .github/workflows/devflow-governance.yml")
+    .action(async (featureId: string, options: { write?: boolean }) => {
+      await actionsGenerateCommand(process.cwd(), featureId, options);
     });
 
-  // ── Drift Check [PREVIEW] ──
+  // ── Drift Check  ──
 
-  program
-    .command("drift check <featureId>")
-    .description("[PREVIEW] Check code-spec divergence")
-    .action(async (featureId: string) => {
-      renderPreviewStub(
-        `devflow drift check ${featureId}`,
-        "Code-spec drift detection",
-        "Planned. Not built yet.",
-        `Compare _devflow/features/${featureId}/requirements.md acceptance criteria against implementation-log.jsonl manually.`,
-      );
+  const driftCmd = program
+    .command("drift")
+    .description("Drift detection between specs and implementation");
+
+  driftCmd
+    .command("check <featureId>")
+    .description("Check code-spec divergence — compare requirements.md vs implementation-log.jsonl")
+    .option("--strict", "Deterministic exact matching (no false positives)")
+    .option("--heuristic", "Fuzzy keyword matching (catches more, may have false positives)")
+    .action(async (featureId: string, options: { strict?: boolean; heuristic?: boolean }) => {
+      await driftCheckCommand(process.cwd(), featureId, options);
     });
 
-  // ── AI Adversarial Review [PREVIEW] ──
+  // ── AI Adversarial Review ──
 
   program
     .command("adversarial-review-ai <featureId>")
-    .description("[PREVIEW] AI-powered adversarial review — uses LangGraph pipeline")
+    .description("AI-powered adversarial review — complements deterministic review with LLM analysis (falls back to deterministic if no AI provider)")
     .action(async (featureId: string) => {
-      renderPreviewStub(
-        `devflow adversarial-review-ai ${featureId}`,
-        "AI-powered adversarial review (LangGraph pipeline)",
-        "Planned. Not built yet.",
-        "Use 'devflow adversarial-review' for deterministic review (12 attack vectors, fully implemented).",
-      );
+      await adversarialReviewAI(featureId, process.cwd());
     });
 
-  // ── Eval [EXPERIMENTAL] ──
+  // ── Eval ──
 
   program
     .command("eval run")
-    .description("[EXPERIMENTAL] Run evaluation suite and generate report")
+    .description("Run evaluation suite and generate report")
     .action(async () => {
       await runEvals(process.cwd());
     });
 
-  // ── Trace [PREVIEW] ──
+  // ── Trace ──
 
   program
-    .command("trace <runId>")
-    .description("[PREVIEW] Trace AI pipeline execution")
-    .action(async (runId: string) => {
-      renderPreviewStub(
-        `devflow trace ${runId}`,
-        "AI pipeline trace",
-        "Planned. Not built yet.",
-        "Run artifacts will be stored in .devflow/ai/runs/ when available.",
-      );
+    .command("trace")
+    .description("Trace execution timeline from audit logs — gates, actions, decisions, reviews")
+    .option("--feature <id>", "Filter by feature ID")
+    .option("--format <format>", "Output format: terminal, json, html", "terminal")
+    .action(async (options) => {
+      await traceCommand(process.cwd(), {
+        format: options.format,
+        featureId: options.feature,
+      });
     });
 
-  // ── Promote [PREVIEW] ──
+  // ── Analyze ──
+
+  const analyzeCmd = program
+    .command("analyze")
+    .description("Analyze codebase across multiple dimensions — security, performance, architecture, tests, docs, deps");
+
+  analyzeCmd
+    .command("run")
+    .description("Run parallel analysis across selected dimensions")
+    .option("--parallel <dims>", 'Dimensions to analyze: "all", comma-separated list, or "custom"', "all")
+    .option("--dimensions-file <path>", "Path to custom dimension config file (JSON/YAML)")
+    .option("--json", "Output as JSON (pipe-safe)")
+    .option("--max-parallel <n>", "Maximum parallel agents", parseInt)
+    .option("--timeout <seconds>", "Per-agent timeout in seconds", parseInt)
+    .action(async (options) => {
+      await analyzeCommand(process.cwd(), {
+        parallel: options.parallel,
+        dimensionsFile: options.dimensionsFile,
+        json: options.json,
+        maxParallel: options.maxParallel,
+        timeout: options.timeout,
+      });
+    });
+
+  // ── Promote ──
 
   program
-    .command("promote <proposalId>")
-    .description("[PREVIEW] Promote AI-generated proposal to official feature artifact")
-    .action(async (proposalId: string) => {
-      renderPreviewStub(
-        `devflow promote ${proposalId}`,
-        "AI proposal promotion",
-        "Planned. Not built yet.",
-        "Manually copy artifacts from .devflow/ai/runs/ to _devflow/features/.",
-      );
+    .command("promote <featureId>")
+    .description("Promote feature between environments: local → staging → prod (with environment gates)")
+    .option("--to <env>", "Target environment: local, staging, prod", "staging")
+    .option("--force", "Skip failed gates with warning")
+    .action(async (featureId: string, options) => {
+      await promoteCommand(process.cwd(), {
+        to: options.to,
+        force: options.force ?? false,
+        featureId,
+      });
     });
 }

@@ -1,10 +1,10 @@
 import path from "node:path";
 import { execSync } from "node:child_process";
-import { ArtifactManager } from "../artifacts/manager.js";
+import { ArtifactManager } from "../kernel/artifacts/manager.js";
 import { inspectProject } from "../project/inspector.js";
 import { detectState } from "../engine/state-detector.js";
 import { computeRecommendation } from "../engine/next-action.js";
-import { generateCockpit } from "../cockpit/generator.js";
+import { generateCockpit } from "../kernel/cockpit/generator.js";
 import { fileExists, ensureDir } from "../utils/fs.js";
 import { getVersion } from "../kernel/utils/version.js";
 import { resolveInvocationCommand } from "../kernel/utils/cli-resolver.js";

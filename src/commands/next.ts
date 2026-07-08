@@ -3,16 +3,56 @@ import { inspectProject } from "../project/inspector.js";
 import { detectState } from "../engine/state-detector.js";
 import { computeRecommendation } from "../engine/next-action.js";
 import { fileExists } from "../utils/fs.js";
+import { WorkflowEngine } from "../kernel/workflow/engine.js";
+import { ParallelSpawner } from "../kernel/orchestration/parallel-spawner.js";
+import { resolveDimensions } from "../kernel/orchestration/dimensions.js";
+import { CompletenessCritic } from "../kernel/orchestration/completeness-critic.js";
+import type { AnalysisContext } from "../kernel/orchestration/completeness-critic.js";
 import pc from "picocolors";
 
 export async function nextCommand(
   cwd: string,
-  options: { json?: boolean; force?: boolean; diagnose?: boolean }
+  options: { json?: boolean; force?: boolean; diagnose?: boolean; engine?: boolean }
 ): Promise<void> {
   const rootPath = path.resolve(cwd);
   const inspection = await inspectProject(rootPath);
-  const stateResult = await detectState(inspection);
-  const recommendation = computeRecommendation(stateResult, inspection);
+
+  // Determine whether to use engine or legacy recommender
+  const useEngine = options.engine ?? true; // Default to engine
+  let recommendation: any;
+
+  if (useEngine) {
+    try {
+      const engine = new WorkflowEngine(rootPath);
+      await engine.initialize(inspection);
+      const engineRec = await engine.getRecommendation();
+
+      // Map engine recommendation to the format expected by the display
+      const recAction = engineRec.recommendedTransition;
+      const nextActionEntry = recAction
+        ? recommendationFromTransition(recAction)
+        : unknownStateRecommendation(engineRec.currentState);
+
+      recommendation = {
+        currentState: engineRec.currentState,
+        confidence: engineRec.confidence,
+        evidence: [],
+        known: engineRec.known,
+        assumptions: [],
+        blockers: engineRec.blockers,
+        recommendedNextAction: nextActionEntry,
+        alternatives: [],
+        workflow: engineRec.workflow,
+      };
+    } catch {
+      // Fall back to legacy if engine fails
+      const stateResult = await detectState(inspection);
+      recommendation = computeRecommendation(stateResult, inspection);
+    }
+  } else {
+    const stateResult = await detectState(inspection);
+    recommendation = computeRecommendation(stateResult, inspection);
+  }
 
   if (options.json) {
     console.log(JSON.stringify(recommendation, null, 2));
@@ -22,18 +62,21 @@ export async function nextCommand(
   const action = recommendation.recommendedNextAction;
   const safetyIcon =
     action.safetyLevel === "safe"
-      ? pc.green("🟢 safe")
+      ? pc.green("\u{1F7E2} safe")
       : action.safetyLevel === "caution"
-        ? pc.yellow("🟡 caution")
-        : pc.red("🔴 blocked");
+        ? pc.yellow("\u{1F7E1} caution")
+        : pc.red("\u{1F534} blocked");
 
   console.log(pc.bold("\nDevflow — Next Best Action\n"));
   console.log(pc.dim("═".repeat(55)));
 
   console.log(pc.bold("\nCurrent State: "), pc.cyan(recommendation.currentState));
   console.log(pc.bold("Confidence:    "), recommendation.confidence);
+  if (recommendation.workflow) {
+    console.log(pc.bold("Workflow:      "), pc.dim(recommendation.workflow));
+  }
 
-  // ── Primary Recommendation ──
+  // Primary Recommendation
   console.log(pc.bold("\n✦ PRIMARY RECOMMENDATION"));
   console.log(`  ${pc.bold(action.description)}`);
   console.log(`  ${pc.dim(action.why)}`);
@@ -41,12 +84,12 @@ export async function nextCommand(
   console.log(`  Safety:    ${safetyIcon}`);
   console.log(`  Workflow:  ${pc.dim(action.agentOrWorkflow)}`);
 
-  // ── Artifact Health ──
+  // Artifact Health
   if (inspection.activeFeature) {
     await showArtifactHealth(rootPath, inspection);
   }
 
-  // ── Blockers ──
+  // Blockers
   if (recommendation.blockers.length > 0) {
     console.log(pc.bold("\n✦ BLOCKERS"));
     for (const b of recommendation.blockers) {
@@ -54,29 +97,31 @@ export async function nextCommand(
     }
   }
 
-  // ── Answer: Can I ask AI to code now? ──
+  // Can AI code now?
   await showCanCodeNow(recommendation.currentState, recommendation.blockers, rootPath, inspection, options);
 
-  // ── Specific file guidance ──
+  // Specific file guidance
   if (options.diagnose) {
     await showDiagnosticDetail(recommendation.currentState, rootPath, inspection);
   }
 
-  // ── Files referenced ──
-  if (action.reads.length > 0) {
+  // Files referenced
+  if (action.reads && action.reads.length > 0) {
     console.log(pc.bold("\n✦ RELEVANT FILES"));
     for (const r of action.reads) {
       console.log(`  ${pc.dim("→")} ${r}`);
     }
   }
 
-  // ── Alternatives ──
-  if (recommendation.alternatives.length > 0) {
+  // Alternatives
+  if (recommendation.alternatives && recommendation.alternatives.length > 0) {
     console.log(pc.bold("\n✦ ALTERNATIVES"));
     for (let i = 0; i < recommendation.alternatives.length; i++) {
-      const alt = recommendation.alternatives[i]!;
+      const alt = recommendation.alternatives[i];
       console.log(`  ${pc.cyan(`${i + 1}.`)} ${alt.description}`);
-      console.log(`     ${pc.dim(alt.whenToChoose)}`);
+      if (alt.whenToChoose) {
+        console.log(`     ${pc.dim(alt.whenToChoose)}`);
+      }
     }
   }
 
@@ -88,8 +133,49 @@ export async function nextCommand(
 }
 
 /**
- * Show artifact health for the active feature.
+ * Map a ValidTransition to the NextActionEntry-like format.
  */
+function recommendationFromTransition(
+  recAction: any,
+): any {
+  const t = recAction.transition;
+  const guardNote =
+    recAction.guardResult?.passed === false
+      ? ` (guard: ${recAction.guardResult.reason ?? "blocked"})`
+      : "";
+
+  return {
+    id: t.id,
+    description: `${t.label}${guardNote}`,
+    why: t.description,
+    agentOrWorkflow: t.workflow,
+    writes: [],
+    reads: [],
+    safetyLevel:
+      recAction.guardResult?.passed === false
+        ? "blocked"
+        : recAction.guardResult?.passed === null
+          ? "caution"
+          : "safe",
+  };
+}
+
+function unknownStateRecommendation(stateName: string): any {
+  return {
+    id: "unknown-state",
+    description: `State "${stateName}" not fully mapped. Run \`devflow doctor\` for diagnosis.`,
+    why: "The current state does not have a recommended transition.",
+    agentOrWorkflow: "orchestrator",
+    writes: [],
+    reads: [],
+    safetyLevel: "caution",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Legacy display helpers — kept unchanged for backward compat
+// ---------------------------------------------------------------------------
+
 async function showArtifactHealth(_rootPath: string, inspection: any): Promise<void> {
   const feature = inspection.activeFeature;
   if (!feature) return;
@@ -119,9 +205,6 @@ async function showArtifactHealth(_rootPath: string, inspection: any): Promise<v
   }
 }
 
-/**
- * Answer the question: "Can I ask AI to code now or will I mess up?"
- */
 async function showCanCodeNow(
   state: string,
   blockers: string[],
@@ -185,9 +268,6 @@ async function showCanCodeNow(
   }
 }
 
-/**
- * Detailed diagnostic for specific states when --diagnose flag is used.
- */
 async function showDiagnosticDetail(
   state: string,
   rootPath: string,
@@ -230,7 +310,6 @@ async function showDiagnosticDetail(
         for (const section of sections) {
           const lines = section.split("\n");
           const heading = lines[0]?.trim() || "";
-          // Find actual content (skip HTML comments and empty lines)
           const realContent = lines.slice(1)
             .filter(l => !l.trim().startsWith("<!--") && !l.match(/^\s*-\s*$/) && l.trim().length > 0)
             .join(" ");
@@ -269,4 +348,113 @@ async function showDiagnosticDetail(
       console.log(`  ${pc.dim("→ File: ")}${pc.bold(`_devflow/features/${feature.id}/test-plan.md`)}`);
     }
   }
-}
+
+  // ── Parallel Analysis Diagnostic ──
+  // Run a lightweight parallel analysis in --diagnose mode.
+  // Shows findings per dimension if analysis finds issues.
+  if (feature) {
+    try {
+      const spawner = new ParallelSpawner(rootPath);
+      const analysisDimensions = resolveDimensions(["security", "architecture", "deps"]);
+      const result = await spawner.spawnAgents(analysisDimensions, {
+        timeoutPerAgent: 30_000, // faster timeout for diagnostic mode
+      });
+
+      if (result.totalFindings > 0) {
+        console.log(pc.bold("\n  PARALLEL ANALYSIS (quick scan)"));
+
+        for (const [dimName, findings] of Object.entries(result.byDimension)) {
+          const criticalCount = findings.filter((f) => f.severity === "critical").length;
+          const warningCount = findings.filter((f) => f.severity === "warning").length;
+
+          if (criticalCount > 0 || warningCount > 0) {
+            const color = criticalCount > 0 ? pc.red : pc.yellow;
+            console.log(color(
+              `  ${dimName}: ${findings.length} issues (${criticalCount} critical, ${warningCount} warning)`,
+            ));
+          }
+        }
+
+        // Show top 3 critical issues
+        const criticalIssues = result.topIssues
+          .filter((f) => f.severity === "critical")
+          .slice(0, 3);
+
+        for (const issue of criticalIssues) {
+          console.log(pc.red(`    [${issue.file}:${issue.line}] ${issue.message}`));
+        }
+      }
+    } catch {
+      // Parallel analysis is best-effort in diagnostic mode
+    }
+
+    // ── Completeness Critic Diagnostic ──
+    // After parallel analysis, run the critic to identify gaps
+    // in dimensions not covered, sources not read, or claims not verified.
+    try {
+      const critic = new CompletenessCritic(rootPath, {
+          maxIterations: 3,
+          dryThreshold: 2,
+          useSpawner: false,
+        });
+
+        // Re-run a lightweight analysis for the critic context
+        // (separate from the parallel analysis above, which is scoped in a try block)
+        const criticSpawner = new ParallelSpawner(rootPath);
+        const criticDims = resolveDimensions(["security", "architecture", "deps"]);
+        const criticResult = await criticSpawner.spawnAgents(criticDims, {
+          timeoutPerAgent: 30_000,
+        });
+
+        const criticContext: AnalysisContext = {
+          rootPath,
+          analyzedDimensions: criticDims.map((d) => d.name),
+          inspectedFiles: [],
+          agentResults: Object.entries(criticResult.byDimension).flatMap(
+            ([dim, findings]) => ({
+              dimension: dim,
+              findings,
+              durationMs: 0,
+              exitCode: 0,
+            }),
+          ),
+        };
+
+        const criticReport = await critic.fullCritique(criticContext);
+
+        if (criticReport.hasGaps) {
+          console.log(pc.bold("\n  COMPLETENESS CRITIC"));
+
+          const dimGaps = criticReport.byType["dimension_not_covered"];
+          if (dimGaps.length > 0) {
+            console.log(pc.yellow(`  ${dimGaps.length} dimension(s) not covered:`));
+            for (const g of dimGaps) {
+              console.log(`    ${pc.dim("⚠")} ${g.description}`);
+            }
+          }
+
+          const srcGaps = criticReport.byType["source_not_read"];
+          if (srcGaps.length > 0) {
+            console.log(pc.cyan(`  ${srcGaps.length} source gap(s):`));
+            for (const g of srcGaps) {
+              console.log(`    ${pc.dim("→")} ${g.description}`);
+            }
+          }
+
+          const claimGaps = criticReport.byType["claim_not_verified"];
+          if (claimGaps.length > 0) {
+            console.log(pc.magenta(`  ${claimGaps.length} unverified claim(s):`));
+            for (const g of claimGaps) {
+              console.log(`    ${pc.dim("?")} ${g.description}`);
+            }
+          }
+
+          console.log(pc.dim(`  (${criticReport.totalIterations} iteration(s), ${Math.round(criticReport.durationMs / 1000)}s)`));
+        } else {
+          console.log(pc.green("\n  COMPLETENESS CRITIC: No gaps found"));
+        }
+      } catch {
+        // Critic is best-effort in diagnostic mode
+      }
+    }
+  }

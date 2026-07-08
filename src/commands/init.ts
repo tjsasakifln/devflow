@@ -1,11 +1,11 @@
 import path from "node:path";
 import fs from "node:fs/promises";
-import { ArtifactManager } from "../artifacts/manager.js";
+import { ArtifactManager } from "../kernel/artifacts/manager.js";
 import { ConfigManager } from "../config/index.js";
 import { inspectProject } from "../project/inspector.js";
 import { detectState } from "../engine/state-detector.js";
 import { computeRecommendation } from "../engine/next-action.js";
-import { generateCockpit } from "../cockpit/generator.js";
+import { generateCockpit } from "../kernel/cockpit/generator.js";
 import { ensureClaudeMdSection } from "../integration/claude-code.js";
 import { fileExists } from "../utils/fs.js";
 import { resolveInvocationCommand } from "../kernel/utils/cli-resolver.js";

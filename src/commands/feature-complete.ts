@@ -8,8 +8,8 @@ import {
   validateRequirements,
   validateRoadmap,
   validateActions,
-} from "../artifacts/validator.js";
-import { runConstitutionCheck, getConstitutionCompliance } from "../constitution/checker.js";
+} from "../kernel/artifacts/validator.js";
+import { runConstitutionCheck, getConstitutionCompliance } from "../kernel/constitution/checker.js";
 import { detectStackProfile } from "../kernel/detection/stack.js";
 import {
   toolFailedRemediation,
@@ -854,7 +854,7 @@ async function checkOOQuality(checks: DoDCheck[], rootPath: string) {
     const config = await configMgr.load();
 
     if (config.deterministicGates.ooMetrics) {
-      const { validateOOQuality } = await import("../engine/oo-validator.js");
+      const { validateOOQuality } = await import("../kernel/validators/oo.js");
       const ooResult = validateOOQuality(rootPath);
       checks.push({
         id: "17",
@@ -894,7 +894,7 @@ async function checkAcceptanceCriteria(checks: DoDCheck[], featureDir: string) {
   if (await fileExists(tpPath)) {
     try {
       const md = (await safeReadFile(tpPath)) || "";
-      const { validateTestPlanSemantic } = await import("../engine/semantic-validator.js");
+      const { validateTestPlanSemantic } = await import("../kernel/validators/semantic.js");
       const result = validateTestPlanSemantic(md);
       checks.push({
         id: "18",
@@ -1052,7 +1052,7 @@ async function checkLoopValidation(checks: DoDCheck[], featureDir: string) {
   if (await fileExists(actionsPath)) {
     try {
       const md = (await safeReadFile(actionsPath)) || "";
-      const { validateLoopsInFeature, scanActionsForLoops } = await import("../engine/loop-validator.js");
+      const { validateLoopsInFeature, scanActionsForLoops } = await import("../kernel/validators/loop.js");
       const loops = scanActionsForLoops(md);
       if (loops.length > 0) {
         const result = validateLoopsInFeature(md);
@@ -1097,7 +1097,7 @@ async function checkSemanticQuality(checks: DoDCheck[], featureDir: string) {
   if (await fileExists(reqPath)) {
     try {
       const md = (await safeReadFile(reqPath)) || "";
-      const { validateRequirementsSemantic } = await import("../engine/semantic-validator.js");
+      const { validateRequirementsSemantic } = await import("../kernel/validators/semantic.js");
       const result = validateRequirementsSemantic(md);
       checks.push({
         id: "22",

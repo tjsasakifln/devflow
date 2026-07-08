@@ -3,6 +3,11 @@ import type { StateDetectionResult } from "../types/state.js";
 import type { ProjectInspection } from "../types/project.js";
 import { ACTION_MAP } from "../state/transitions.js";
 
+/**
+ * Compute the next action recommendation from a state detection result.
+ * This is the legacy/sync path — for enhanced recommendations with guard
+ * evaluation and full workflow spec, use the WorkflowEngine instead.
+ */
 export function computeRecommendation(
   stateResult: StateDetectionResult,
   _inspection: ProjectInspection

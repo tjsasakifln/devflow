@@ -179,32 +179,39 @@ Unknown actors blocked. Every check must pass. Implementation log must be comple
 
 ## Commands
 
-### STABLE — Fully implemented and tested
+All commands are **STABLE** unless marked otherwise.
 
 | Command | Description |
 |---------|-------------|
-| `npx devflow audit` | Audit AI-generated changes before they reach a PR |
-| `npx devflow install` | Guided first-run setup |
-| `npx devflow init` | Initialize Devflow (script-friendly) |
-| `npx devflow status [--json] [--verbose]` | Show project state, confidence, evidence |
-| `npx devflow next [--json] [--diagnose]` | Recommend next best action |
-| `npx devflow feature new <name>` | Create feature workspace |
-| `npx devflow feature complete <id>` | Run 25 Definition of Done checks |
-| `npx devflow feature prompt <id> [--copy] [--save]` | Generate AI implementation prompt |
-| `npx devflow gatekeep <id> --approve\|--reject` | Independent gatekeeper review |
-| `npx devflow adversarial-review <id>` | Adversarial review — 12 attack vectors |
-| `npx devflow review-pr [--base <branch>] [--output <file>] [--format <format>]` | Generate PR risk report |
-| `npx devflow doctor [--fix]` | Diagnose and fix common issues |
-| `npx devflow update-cockpit` | Regenerate DEVFLOW.md cockpit |
-| `npx devflow index` | Map project structure |
-| `npx devflow config set <key> <value>` | Configure reviewMode, executionMode, riskTolerance |
+| `devflow audit` | Audit AI-generated changes and produce pre-commit risk snapshot |
+| `devflow ai init` | Configure AI provider (Claude Code, Cursor, Copilot) |
+| `devflow install` | Guided first-run setup |
+| `devflow init` | Initialize Devflow (script-friendly, no onboarding) |
+| `devflow status [--json] [--verbose]` | Show project state, confidence, blockers |
+| `devflow next [--json] [--diagnose]` | Recommend next best action |
+| `devflow config set <key> <value>` | Configure reviewMode, executionMode, riskTolerance |
+| `devflow feature new <name>` | Create feature workspace with templates |
+| `devflow feature prompt <id> [--copy] [--save]` | Generate AI implementation prompt |
+| `devflow feature complete <id>` | Run 25 Definition of Done checks |
+| `devflow gatekeep <id> --approve\|--reject` | Independent gatekeeper review |
+| `devflow adversarial-review <id>` | Adversarial review — 12 attack vectors |
+| `devflow adversarial-review-ai <id>` | AI-assisted adversarial review (LLM-powered) |
+| `devflow review-pr [--base] [--output] [--format]` | Generate PR risk report (markdown/HTML/JSON) |
+| `devflow doctor [--fix]` | Diagnose and fix common issues |
+| `devflow update-cockpit` | Regenerate DEVFLOW.md cockpit |
+| `devflow index` | Map project structure |
+| `devflow discover` | Discover and document brownfield project structure |
+| `devflow actions-generate` | Generate actions from requirements and roadmap |
+| `devflow tests-review` | Review test plan against requirements |
+| `devflow drift-check` | Detect drift between requirements and implementation |
+| `devflow design-review` | Review roadmap/design artifacts |
+| `devflow requirements-audit` | Audit requirements quality, consistency, and completeness |
+| `devflow analyze <type>` | Analyze project for specified concern |
+| `devflow trace <id>` | Trace requirement through design, implementation, and verification |
+| `devflow promote <id>` | Promote feature to next pipeline stage |
+| `devflow eval run` | Run evaluation suite |
 
-### EXPERIMENTAL — Partial implementation
-
-| Command | Description |
-|---------|-------------|
-| `npx devflow discover` | Discover and document brownfield project structure |
-| `npx devflow eval run` | Run evaluation suite |
+> **Performance baseline (v1.0.0):** `devflow status` ~1.5s, `devflow next` ~1.5s (tested on 196-file project).
 
 ---
 
@@ -323,19 +330,13 @@ npm test
 
 ## Roadmap
 
-Commands planned but not yet built. Use manual alternatives until implemented.
+All commands listed in the [Commands](#commands) section are implemented and stable. No pending command backlog for v1.0.0.
 
-| Planned Command | Manual Alternative Today |
-|-----------------|--------------------------|
-| `devflow ai init` | Set API keys as env vars |
-| `devflow requirements audit` | Review requirements.md manually; use `devflow next --diagnose` |
-| `devflow design review` | Review roadmap.md manually |
-| `devflow tests review` | Review test-plan.md manually |
-| `devflow actions generate` | Copy from templates/actions-template.md |
-| `devflow drift check` | Compare requirements vs implementation-log.jsonl |
-| `devflow adversarial-review-ai` | Use `devflow adversarial-review` (deterministic, 12 vectors) |
-| `devflow trace` | Read .devflow/ai/runs/ artifacts directly |
-| `devflow promote` | Copy artifacts manually |
+Future directions include:
+- **Plugin system** for custom guards and checks
+- **Visual dashboard** for multi-project governance
+- **IDE extension** for VS Code and JetBrains
+- **Team sync** for distributed audit log aggregation
 
 ---
 

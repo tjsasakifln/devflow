@@ -1,0 +1,8 @@
+schema: 1
+story: '2.2'
+gate: PASS
+status_reason: 'Engine core implemented and verified: YAML loader, state persistence (v2 with v1 compat), checkpoint/resume, dry-run, devflow next integration. 570+ test cases pass. TypeScript compiles clean.'
+reviewer: 'Quinn'
+updated: '2026-07-08T11:20:00Z'
+top_issues: []
+waiver: { active: false }

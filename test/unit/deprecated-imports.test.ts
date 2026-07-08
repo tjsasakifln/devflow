@@ -66,8 +66,8 @@ describe("Deprecated Re-export Shims", () => {
     expect(true).toBe(true);
   });
 
-  it("artifacts/manager re-exports from kernel/artifacts/manager", async () => {
-    const mod = await import("../../src/artifacts/manager.js");
+  it("kernel/artifacts/manager resolves directly", async () => {
+    const mod = await import("../../src/kernel/artifacts/manager.js");
     expect(mod.ArtifactManager).toBeDefined();
     expect(typeof mod.ArtifactManager).toBe("function");
   });
@@ -79,39 +79,39 @@ describe("Deprecated Re-export Shims", () => {
     expect(typeof mod.renderRemediation).toBe("function");
   });
 
-  it("cockpit/generator re-exports from kernel/cockpit/generator", async () => {
-    const mod = await import("../../src/cockpit/generator.js");
+  it("cockpit/generator exports from kernel/cockpit/generator", async () => {
+    const mod = await import("../../src/kernel/cockpit/generator.js");
     expect(mod.generateCockpit).toBeDefined();
     expect(typeof mod.generateCockpit).toBe("function");
   });
 
-  it("constitution/checker re-exports from kernel/constitution/checker", async () => {
-    const mod = await import("../../src/constitution/checker.js");
+  it("kernel/constitution/checker resolves directly", async () => {
+    const mod = await import("../../src/kernel/constitution/checker.js");
     expect(mod.runConstitutionCheck).toBeDefined();
     expect(mod.getConstitutionCompliance).toBeDefined();
   });
 
-  it("constitution/loader re-exports from kernel/constitution/loader", async () => {
-    const mod = await import("../../src/constitution/loader.js");
+  it("kernel/constitution/loader resolves directly", async () => {
+    const mod = await import("../../src/kernel/constitution/loader.js");
     expect(mod.loadConstitution).toBeDefined();
     expect(typeof mod.loadConstitution).toBe("function");
   });
 
-  it("engine/semantic-validator re-exports from kernel/validators/semantic", async () => {
-    const mod = await import("../../src/engine/semantic-validator.js");
+  it("kernel/validators/semantic exports semantic validators", async () => {
+    const mod = await import("../../src/kernel/validators/semantic.js");
     expect(mod.validateRequirementsSemantic).toBeDefined();
     expect(mod.validateTestPlanSemantic).toBeDefined();
     expect(typeof mod.validateRequirementsSemantic).toBe("function");
   });
 
-  it("engine/loop-validator re-exports from kernel/validators/loop", async () => {
-    const mod = await import("../../src/engine/loop-validator.js");
+  it("kernel/validators/loop exports loop validators", async () => {
+    const mod = await import("../../src/kernel/validators/loop.js");
     expect(mod.validateLoopsInFeature).toBeDefined();
     expect(mod.scanActionsForLoops).toBeDefined();
   });
 
-  it("engine/oo-validator re-exports from kernel/validators/oo", async () => {
-    const mod = await import("../../src/engine/oo-validator.js");
+  it("kernel/validators/oo exports OO validators", async () => {
+    const mod = await import("../../src/kernel/validators/oo.js");
     expect(mod.validateOOQuality).toBeDefined();
   });
 

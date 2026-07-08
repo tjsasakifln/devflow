@@ -1,6 +1,6 @@
 import path from "node:path";
 import { execSync } from "node:child_process";
-import { ArtifactManager } from "../artifacts/manager.js";
+import { ArtifactManager } from "../kernel/artifacts/manager.js";
 import { inspectProject } from "../project/inspector.js";
 import { fileExists, listDir } from "../utils/fs.js";
 import {
@@ -139,7 +139,7 @@ export async function featureNewCommand(
   const inspection = await inspectProject(rootPath);
   const { detectState } = await import("../engine/state-detector.js");
   const { computeRecommendation } = await import("../engine/next-action.js");
-  const { generateCockpit } = await import("../cockpit/generator.js");
+  const { generateCockpit } = await import("../kernel/cockpit/generator.js");
 
   const stateResult = await detectState(inspection);
   const recommendation = computeRecommendation(stateResult, inspection);

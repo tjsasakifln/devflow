@@ -1,0 +1,8 @@
+schema: 1
+story: '3.3'
+gate: PASS
+status_reason: 'All acceptance criteria met. 12 tests pass covering critic analysis, loop-until-dry, convergence behavior, and integration with devflow next --diagnose. TypeScript typecheck clean.'
+reviewer: 'Quinn'
+updated: '2026-07-08T14:15:00Z'
+top_issues: []
+waiver: { active: false }

@@ -28,7 +28,7 @@ describe("CLI integration — compiled dist/main.js", () => {
     expect(result.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
   });
 
-  it("--list-tiers produces expected stable command listing", () => {
+  it("--list-tiers shows deprecation message (all commands STABLE)", () => {
     const result = spawnSync("node", [distMain, "--list-tiers"], {
       cwd,
       encoding: "utf-8",
@@ -36,8 +36,8 @@ describe("CLI integration — compiled dist/main.js", () => {
     });
     expect(result.status).toBe(0);
     expect(result.stdout).toMatch(/STABLE/);
-    expect(result.stdout).toMatch(/audit/);
-    expect(result.stdout).toMatch(/review-pr/);
+    expect(result.stdout).toMatch(/v1\.0\.0/);
+    expect(result.stdout).toMatch(/eliminated/);
   });
 
   // ── audit JSON pipe-safety ──

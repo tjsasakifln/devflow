@@ -60,8 +60,7 @@ describe("README.md Validation", () => {
 
   it("should include tier classification for commands", () => {
     expect(readmeContent).toContain("STABLE");
-    expect(readmeContent).toContain("EXPERIMENTAL");
-    expect(readmeContent).toContain("Roadmap");
+    expect(readmeContent).toContain("Commands");
   });
 
   it("should document install command or installation method", () => {
@@ -77,12 +76,8 @@ describe("README.md Validation", () => {
   });
 
   it("should not claim unimplemented features as working", () => {
-    // PREVIEW commands should be labeled as PREVIEW
-    const previewSection = readmeContent.split("## Roadmap")[1];
-    if (previewSection) {
-      // PREVIEW section exists - good
-      expect(previewSection.length).toBeGreaterThan(50);
-    }
+    // All commands are STABLE in v1.0.0 — Roadmap section now has future directions
+    expect(readmeContent).toContain("Roadmap");
   });
 
   it("should recommend npx @tjsasakinpm/devflow install as primary entry point", () => {

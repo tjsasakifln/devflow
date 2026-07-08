@@ -225,6 +225,10 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
         description: "Auto-format and expand requirements with AI assistance",
         whenToChoose: "Requirements are rough and need structure",
       },
+      {
+        description: "Run `devflow requirements audit <featureId>` for an automated quality check",
+        whenToChoose: "You want a heuristic score on clarity, coverage, and testability",
+      },
     ],
   },
   "feature-design": {
@@ -238,7 +242,12 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
       writes: [],
       reads: ["_devflow/features/<id>/roadmap.md", ".devflow/constitution.md"],
     },
-    alternativeActions: [],
+    alternativeActions: [
+      {
+        description: "Run `devflow design review <featureId>` for an automated architecture review",
+        whenToChoose: "You want a heuristic check for over-engineering and missing layers before submitting for human review",
+      },
+    ],
   },
   "feature-design-reviewed": {
     sourceState: "feature-design-reviewed",
@@ -277,7 +286,12 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
       writes: ["_devflow/features/<id>/quality-audit.md", "_devflow/features/<id>/legacy-impact.md", "_devflow/features/<id>/regression-watch.md"],
       reads: ["_devflow/features/<id>/requirements.md", "_devflow/features/<id>/roadmap.md", "_devflow/features/<id>/test-plan.md"],
     },
-    alternativeActions: [],
+    alternativeActions: [
+      {
+        description: "Run `devflow tests review <featureId>` to validate test plan coverage against actual test files",
+        whenToChoose: "Test plan needs verification against existing test implementations",
+      },
+    ],
   },
   "feature-verification": {
     sourceState: "feature-verification",
@@ -292,6 +306,8 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
     },
     alternativeActions: [
       { description: "Fix failing checks and re-verify", whenToChoose: "Verification revealed issues" },
+      { description: "Run `devflow tests review <featureId>` to check test-plan vs actual test coverage", whenToChoose: "Need to verify test documentation matches implementation" },
+      { description: "Run `devflow drift check <featureId>` to detect spec-implementation divergence", whenToChoose: "Suspect code has drifted from requirements" },
     ],
   },
   "feature-ci-verified": {
@@ -322,6 +338,9 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
     },
     alternativeActions: [
       { description: "Return to coding for fixes", whenToChoose: "Review found issues that need code changes" },
+      { description: "Run `devflow tests review <featureId>` to verify test plan coverage", whenToChoose: "Need confidence in test coverage before approving" },
+      { description: "Run `devflow drift check <featureId>` to confirm spec-implementation alignment", whenToChoose: "Need to verify no undocumented changes exist" },
+      { description: "Run `devflow actions generate <featureId>` to set up CI governance workflow", whenToChoose: "Ready to automate governance in CI pipeline" },
     ],
   },
   "feature-adversarial-review": {
@@ -560,6 +579,10 @@ export const ACTION_MAP: Record<DevflowState, NextActionEntry> = {
       {
         description: "Rollback recent changes",
         whenToChoose: "Recent changes caused the drift and should be reverted",
+      },
+      {
+        description: "Run `devflow drift check <featureId>` for detailed diff between requirements and implementation-log",
+        whenToChoose: "Need to see which specific ACs are out of sync",
       },
       {
         description: "Run devflow doctor for diagnosis",

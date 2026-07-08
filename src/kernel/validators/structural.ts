@@ -67,7 +67,7 @@ export function validateActions(md: string): ValidationResult {
   const errors: string[] = [];
 
   // Check for action entries
-  const actionPattern = /###\s+T\d{3}\s*[-–]/g;
+  const actionPattern = /###\s+T\d{3}\s*[-–—]/g;
   const actions = md.match(actionPattern);
 
   if (!actions || actions.length === 0) {
@@ -146,7 +146,7 @@ function validateSections(
 
     // Check if section has content (not just the heading)
     const afterHeading = md.slice(match.index + match[0].length);
-    const nextHeading = afterHeading.match(/^#{2,3}\s/);
+    const nextHeading = afterHeading.match(/^#{2,3}\s/m);
     const sectionContent = nextHeading
       ? afterHeading.slice(0, nextHeading.index).trim()
       : afterHeading.trim();

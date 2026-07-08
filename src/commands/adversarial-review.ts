@@ -2,6 +2,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { atomicWrite } from "../utils/fs.js";
 import pc from "picocolors";
+import type { AdversarialVerificationResult } from "../kernel/orchestration/types.js";
 
 type AttackVerdict = "pass" | "fail" | "inconclusive";
 
@@ -15,6 +16,11 @@ interface AttackVector {
   name: string;
   question: string;
   check: () => AttackResult;
+}
+
+interface AdversarialReviewOptions {
+  /** When "adversarial", adds multi-agent verification layer on top of deterministic vectors. */
+  verifyMode?: "deterministic" | "adversarial";
 }
 
 function inconclusive(reason: string): AttackResult {
@@ -31,7 +37,8 @@ function fail(finding: string): AttackResult {
 
 export async function adversarialReview(
   featureId: string,
-  rootPath: string
+  rootPath: string,
+  options?: AdversarialReviewOptions,
 ): Promise<void> {
   const featureDir = path.join(rootPath, "_devflow", "features", featureId);
 
@@ -389,6 +396,120 @@ export async function adversarialReview(
     overallVerdict = "PASS";
   }
 
+  // ── Adversarial verification (if enabled) — may override verdict ──
+  let adversarialResult: AdversarialVerificationResult | null = null;
+
+  if (options?.verifyMode === "adversarial") {
+    console.log(
+      pc.bold("\n── Adversarial Verify (Multi-Agent) ──"),
+    );
+    console.log(
+      pc.dim(
+        "Running 3 independent verifiers per finding (correctness, security, repro)...\n",
+      ),
+    );
+
+    // Collect failed findings as verification input
+    const failedFindings = results
+      .filter((r) => r.result.verdict === "fail")
+      .map((r) => ({
+        file: "",
+        line: 0,
+        severity: "critical" as const,
+        message: r.result.finding ?? `[${r.attack.name}] Failed`,
+        dimension: r.attack.name,
+      }));
+
+    if (failedFindings.length === 0) {
+      console.log(
+        pc.green("  No failed findings to verify — adversarial step skipped\n"),
+      );
+    } else {
+      try {
+        const { AdversarialVerifier } = await import(
+          "../kernel/orchestration/adversarial-verify.js"
+        );
+        const verifier = new AdversarialVerifier(rootPath);
+        adversarialResult = await verifier.verify(
+          failedFindings,
+          undefined,
+          featureId,
+        );
+
+        // Display adversarial results
+        for (const result of adversarialResult.allResults) {
+          const outcomeIcon =
+            result.outcome === "survived"
+              ? pc.green("✓")
+              : result.outcome === "refuted"
+                ? pc.dim("✖")
+                : pc.yellow("?");
+
+          console.log(
+            `  ${outcomeIcon} ${pc.bold(result.finding.dimension)}: ${result.summary}`,
+          );
+        }
+
+        console.log(
+          pc.dim(
+            `\n  Adversarial summary: ${adversarialResult.summary}`,
+          ),
+        );
+
+        // Flag disputed findings for human review
+        if (adversarialResult.disputed.length > 0) {
+          console.log(
+            pc.yellow(
+              `\n  ${adversarialResult.disputed.length} finding(s) DISPUTED — human review required`,
+            ),
+          );
+          console.log(
+            pc.dim(
+              `  See .devflow/disputed-findings.json for details`,
+            ),
+          );
+
+          // Adjust overall verdict: disputed findings in strict mode still block
+          if (strictMode) {
+            overallVerdict = "FAIL";
+            console.log(
+              pc.yellow(
+                "  Strict mode: disputed findings treated as failures",
+              ),
+            );
+          }
+        }
+
+        // If all findings were refuted, downgrade to PASS
+        if (
+          failCount > 0 &&
+          adversarialResult.refuted.length ===
+            adversarialResult.totalFindings
+        ) {
+          overallVerdict = "PASS";
+          console.log(
+            pc.green(
+              "\n  All findings were refuted by adversarial verification — verdict downgraded to PASS",
+            ),
+          );
+        }
+
+        console.log("");
+      } catch (err) {
+        console.log(
+          pc.yellow(
+            `  Adversarial verification error: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+        console.log(
+          pc.dim(
+            "  Continuing with deterministic result only\n",
+          ),
+        );
+      }
+    }
+  }
+
   const verdictColor = overallVerdict === "PASS" ? pc.green : overallVerdict === "FAIL" ? pc.red : pc.yellow;
   console.log(pc.bold(`\nAdversarial Review Verdict: ${verdictColor(overallVerdict)}`));
   console.log(pc.dim(`  Pass: ${attackVectors.length - failCount - inconclusiveCount} | Fail: ${failCount} | Inconclusive: ${inconclusiveCount}`));
@@ -416,7 +537,7 @@ export async function adversarialReview(
 > **Verdict:** ${overallVerdict}
 > **Mode:** ${mode}
 > **Reviewer:** Adversarial Reviewer Agent
-
+${options?.verifyMode === "adversarial" ? `> **Verify Mode:** Multi-Agent Adversarial (3 lenses per finding)\n` : ""}
 ## Attack Vectors Checked
 
 ${results.map(({ attack, result }) => {
@@ -427,13 +548,19 @@ ${results.map(({ attack, result }) => {
 
 ${findingsList.length > 0 ? `## Findings\n\n${findingsList.map((f, i) => `${i + 1}. ${f}`).join("\n")}` : ""}
 
-## Summary
+${adversarialResult ? `## Adversarial Verification (Multi-Agent)
 
-| Verdict | Count |
+**Summary:** ${adversarialResult.summary}
+**Duration:** ${adversarialResult.durationMs}ms
+
+| Outcome | Count |
 |---------|-------|
-| Pass | ${attackVectors.length - failCount - inconclusiveCount} |
-| Fail | ${failCount} |
-| Inconclusive | ${inconclusiveCount} |
+| Survived | ${adversarialResult.survived.length} |
+| Refuted | ${adversarialResult.refuted.length} |
+| Disputed | ${adversarialResult.disputed.length} |
+
+${adversarialResult.disputed.length > 0 ? `> **Note:** ${adversarialResult.disputed.length} finding(s) are DISPUTED — human review required. See \`.devflow/disputed-findings.json\` for details.` : ""}
+\n` : ""}
 
 **Overall:** ${overallVerdict}${overallVerdict === "INCONCLUSIVE" ? " — unverifiable vectors found, blocking in strict/release mode" : ""}
 `;

@@ -1,0 +1,13 @@
+schema: 1
+story: '1.1'
+gate: CONCERNS
+status_reason: 'All 3 validators consolidated to kernel, imports redirected, typecheck clean, 654/655 tests pass. Pre-existing test timeout in audit-engine.test.ts unrelated to this story.'
+reviewer: 'Quinn'
+updated: '2026-07-08T14:15:00Z'
+top_issues:
+  - id: 'MNT-001'
+    severity: low
+    finding: 'Pre-existing test timeout in test/unit/audit-engine.test.ts (should return featureId null when no active feature) — 10s timeout exceeded. File not modified by this story.'
+    suggested_action: 'Investigate and fix audit-engine test timeout in a separate story. Consider increasing test timeout or mocking git operations.'
+waiver:
+  active: false
