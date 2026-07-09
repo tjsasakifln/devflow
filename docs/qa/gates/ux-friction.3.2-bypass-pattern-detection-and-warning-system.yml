@@ -1,0 +1,16 @@
+schema: 1
+story: '3.2'
+gate: FAIL
+status_reason: 'AC #4 (--require-justification flag) not implemented. The flag only exists in help text strings but has no actual CLI processing. Core bypass detection (ACs 1-3, 5-6) is fully implemented and tested.'
+reviewer: 'Quinn'
+updated: '2026-07-08T21:15:00Z'
+top_issues:
+  - id: 'REQ-001'
+    severity: high
+    finding: 'Acceptance Criterion #4 --require-justification flag is NOT implemented. The config set command in both src/cli/index.ts and src/commands/index.ts only accepts positional <key> <value> args with no --require-justification option. No justification enforcement exists for riskTolerance changes.'
+    suggested_action: 'Add --require-justification option to the config set command. When setting riskTolerance to strict, prompt for and validate a 1-line justification string. Log the change to bypass-log.jsonl. Reference the existing bypass-detector.ts recordRelaxedTolerance() or recordBypassEvent() pattern.'
+  - id: 'TEST-001'
+    severity: medium
+    finding: 'Pre-existing test failures not related to this story but present in the test suite: audit-engine.test.ts (2 timeout failures) and hooks-pre-command.test.ts (2 ENOTEMPTY failures). These do not block this story but should be tracked.'
+    suggested_action: 'Track as tech debt. The audit-engine timeout is a known pre-existing issue. The hooks ENOTEMPTY may be a test isolation issue from parallel execution.'
+waiver: { active: false }

@@ -1,0 +1,12 @@
+schema: 1
+story: '1.3'
+gate: CONCERNS
+status_reason: 'All ACs implemented, tests pass, no regressions. Minor gap: --yes flag missing from CLI gatekeep command registration (non-interactive mode not exposed).'
+reviewer: 'Quinn'
+updated: '2026-07-08T21:10:00Z'
+top_issues:
+  - id: 'MNT-001'
+    severity: medium
+    finding: 'CLI gatekeep command missing --yes flag for non-interactive auto-switch'
+    suggested_action: 'Add .option("--yes", "Auto-switch to solo-hardened mode") to gatekeep CLI registration in src/cli/index.ts'
+waiver: { active: false }

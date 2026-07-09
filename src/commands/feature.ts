@@ -10,11 +10,16 @@ import {
   spinnerWhile,
   confirmOrExit,
 } from "../utils/prompts.js";
+import { detectProjectType } from "../kernel/detection/project-type.js";
+import type { ProjectType } from "../kernel/detection/project-type.js";
 import pc from "picocolors";
 
 export interface FeatureNewOptions {
   actor?: string;
   nonInteractive?: boolean;
+  quick?: boolean;
+  noWarnings?: boolean;
+  template?: ProjectType;
 }
 
 export async function featureNewCommand(
@@ -23,6 +28,17 @@ export async function featureNewCommand(
   options?: FeatureNewOptions
 ): Promise<void> {
   const rootPath = path.resolve(cwd);
+
+  // ── Pre-command warnings (Story 2.4) ──
+  const { executePreCommandHooks, renderWarnings, computeHealthSummary, renderHealthSummary } =
+    await import("../kernel/hooks/pre-command.js");
+  const hooksCtx = {
+    commandName: "feature new",
+    rootPath,
+    noWarnings: options?.noWarnings ?? false,
+  };
+  const warnings = await executePreCommandHooks(hooksCtx);
+  renderWarnings(warnings);
 
   // Validate name
   const slug = featureName
@@ -66,9 +82,36 @@ export async function featureNewCommand(
   // Determine actor
   const actor = options?.actor || process.env.DEVFLOW_ACTOR || process.env.USER || undefined;
 
+  // ── Template selection (greenfield vs brownfield) ──
+  const templateVariant: ProjectType = options?.template || (await detectProjectType(rootPath));
+  const templateLabel = templateVariant === "greenfield" ? "Greenfield (novo projeto)" : "Brownfield (código existente)";
+  console.log(pc.dim(`  Template: ${templateLabel}\n`));
+
   // ── Interactive mode ──
   const runInteractive = !options?.nonInteractive && isInteractive();
   let prefill: Record<string, string> | null = null;
+
+  // ── Quick mode ──
+  if (options?.quick) {
+    console.log(pc.bold("\n⚡ Quick Mode — AI-Generated Artifacts\n"));
+
+    // Check AI provider
+    const { isAiProviderConfigured } = await import("../kernel/artifacts/generator.js");
+    if (!isAiProviderConfigured()) {
+      console.log(
+        pc.yellow("  No AI provider configured.\n")
+      );
+      console.log("  To use --quick mode, you need an AI provider set up.");
+      console.log("  Run the following command to configure one:\n");
+      console.log(`    ${pc.bold("devflow ai init")}\n`);
+      console.log("  This will guide you through setting up Anthropic (Claude),");
+      console.log("  OpenAI, or Ollama (local) as your AI provider.\n");
+      return;
+    }
+
+    // Quick mode will proceed after directory creation
+    console.log(pc.dim("  ✓ AI provider detected\n"));
+  }
 
   if (runInteractive) {
     console.log(pc.dim("We will walk through each section of requirements.md."));
@@ -150,6 +193,52 @@ export async function featureNewCommand(
     "DEVFLOW.md"
   );
 
+  // ── Quick mode: generate artifacts ──
+  if (options?.quick) {
+    console.log(pc.blue("→") + " Generating all 4 artifacts with AI...\n");
+
+    const { quickGenerateArtifacts } = await import("../kernel/artifacts/generator.js");
+    const result = await quickGenerateArtifacts({
+      cwd: rootPath,
+      featureName,
+      featureId,
+      featurePath,
+      description: featureName, // The feature name IS the description
+    });
+
+    if (result.success) {
+      const seconds = (result.durationMs / 1000).toFixed(1);
+      console.log(pc.green("  ✓ 4 artifacts generated."));
+      for (const file of result.generated) {
+        console.log(`   ${pc.dim("→")} _devflow/features/${featureId}/${file}`);
+      }
+      console.log();
+      console.log(pc.green(`  ⏱️  ${result.generated.length} artifacts generated in ${seconds}s. Manual fill would take ~35min.`));
+      console.log();
+      console.log(pc.yellow("  ⚠️  ALL artifacts are AI-generated. Review before coding."));
+      console.log();
+    } else if (result.message) {
+      console.log(pc.red(`  ✖ ${result.message}`));
+      console.log();
+      return;
+    } else {
+      console.log(pc.red("  ✖ Some artifacts failed to generate.\n"));
+      if (result.generated.length > 0) {
+        console.log("  Generated:");
+        for (const file of result.generated) {
+          console.log(`   ${pc.dim("→")} ${file}`);
+        }
+      }
+      if (result.failed.length > 0) {
+        console.log("  Failed:");
+        for (const file of result.failed) {
+          console.log(`   ${pc.dim("✖")} ${file}`);
+        }
+      }
+      console.log();
+    }
+  }
+
   // ── Create Git feature branch ──
   let branchCreated = false;
   try {
@@ -186,7 +275,14 @@ export async function featureNewCommand(
   }
   console.log();
   console.log(pc.bold("Created files:"));
-  console.log(`  ${pc.dim("→")} _devflow/features/${featureId}/requirements.md`);
+  if (options?.quick) {
+    console.log(`  ${pc.dim("→")} _devflow/features/${featureId}/requirements.md ${pc.dim("(AI)")}`);
+    console.log(`  ${pc.dim("→")} _devflow/features/${featureId}/roadmap.md ${pc.dim("(AI)")}`);
+    console.log(`  ${pc.dim("→")} _devflow/features/${featureId}/actions.md ${pc.dim("(AI)")}`);
+    console.log(`  ${pc.dim("→")} _devflow/features/${featureId}/test-plan.md ${pc.dim("(AI)")}`);
+  } else {
+    console.log(`  ${pc.dim("→")} _devflow/features/${featureId}/requirements.md`);
+  }
   console.log(`  ${pc.dim("→")} _devflow/features/${featureId}/interfaces/`);
   console.log();
 
@@ -207,6 +303,14 @@ export async function featureNewCommand(
       pc.bold(`devflow next`) +
       " to see recommended actions.\n"
   );
+
+  // ── Mini health summary (Story 2.4) ──
+  try {
+    const summary = await computeHealthSummary(featurePath);
+    renderHealthSummary(summary);
+  } catch {
+    // Health summary is advisory — skip silently on failure
+  }
 }
 
 /**

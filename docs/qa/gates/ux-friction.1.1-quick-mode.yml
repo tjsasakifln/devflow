@@ -1,0 +1,25 @@
+schema: 1
+story: ux-friction.1.1
+gate: FAIL
+status_reason: 'AC5 not met: --quick CLI option not registered in src/cli/index.ts — users cannot invoke devflow feature new --quick from command line. CLI registration is missing, making the entire feature inaccessible.'
+reviewer: 'Quinn'
+updated: '2026-07-08T21:12:00Z'
+top_issues:
+  - id: 'REQ-001'
+    severity: high
+    finding: 'AC5 not met: --quick flag is NOT registered via .option("--quick") in src/cli/index.ts, so it does not appear in help text and cannot be parsed by Commander.js'
+    suggested_action: 'Add .option("--quick", "Generate all 4 artifacts using AI from a one-line description") to the feature new command in src/cli/index.ts, and pass quick: rawOptions.quick in the action handler'
+  - id: 'MNT-001'
+    severity: medium
+    finding: 'AC1 partially blocked: the quickGenerateArtifacts code exists in feature.ts and generator.ts but is unreachable from CLI due to missing option registration'
+    suggested_action: 'Register --quick in CLI, then verify end-to-end flow: devflow feature new myidea --quick works from the command line'
+  - id: 'TEST-001'
+    severity: medium
+    finding: 'No test for CLI option registration — existing tests only cover the runtime functions, not the Commander.js option wiring'
+    suggested_action: 'Add a test confirming .option("--quick") is registered on the feature new command'
+  - id: 'REQ-002'
+    severity: low
+    finding: 'AC7 (sanity score) documented as dependent on Story 3.1 — noted as non-blocking'
+    suggested_action: 'Will be satisfied when Story 3.1 is implemented'
+waiver:
+  active: false

@@ -1,0 +1,16 @@
+schema: 1
+story: '1.4'
+gate: CONCERNS
+status_reason: 'Core pre-flight tool check logic works correctly and all 15 unit tests pass, but --install-missing and --non-interactive CLI flags were registered in the wrong file (src/commands/index.ts instead of active src/cli/index.ts), making them unavailable at runtime.'
+reviewer: 'Quinn'
+updated: '2026-07-08T21:15:00Z'
+top_issues:
+  - id: 'MNT-001'
+    severity: medium
+    finding: '--install-missing and --non-interactive CLI flags registered in src/commands/index.ts but main.ts imports from src/cli/index.ts, which does not have these flags — the flags are effectively dead code'
+    suggested_action: 'Add --install-missing and --non-interactive options to the adversarial-review command registration in src/cli/index.ts and remove the duplicate (or dead) registration from src/commands/index.ts if no longer used'
+  - id: 'DOC-001'
+    severity: low
+    finding: 'Story File List incorrectly describes src/cli/index.ts changes as "Added --install-missing and --non-interactive CLI flags" when actual modification was adding --template to feature new command'
+    suggested_action: 'Correct the File List entry in the story to accurately describe what was modified'
+waiver: { active: false }

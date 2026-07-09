@@ -1,6 +1,7 @@
 import path from "node:path";
 import { inspectProject } from "../project/inspector.js";
 import { detectState } from "../engine/state-detector.js";
+import { getQualityDebt } from "../kernel/tracking/bypass-detector.js";
 import pc from "picocolors";
 
 export async function statusCommand(
@@ -12,7 +13,8 @@ export async function statusCommand(
   const stateResult = await detectState(inspection);
 
   if (options.json) {
-    console.log(JSON.stringify(stateResult, null, 2));
+    const qualityDebt = await getQualityDebt(rootPath);
+    console.log(JSON.stringify({ ...stateResult, qualityDebt }, null, 2));
     return;
   }
 
@@ -93,6 +95,29 @@ export async function statusCommand(
     console.log(
       pc.bold("\nGit:        "),
       `${inspection.currentBranch ?? "?"} (${inspection.gitStatus})`
+    );
+  }
+
+  // Quality Debt (bypass tracking)
+  const qualityDebt = await getQualityDebt(rootPath);
+  if (qualityDebt > 0) {
+    console.log(pc.bold("\nQuality Debt:"));
+    console.log(
+      `  ${pc.yellow(`⚠️  ${qualityDebt} feature(s) with bypassed gates`)}`
+    );
+    console.log(
+      pc.dim("  Run `devflow doctor` for bypass pattern detection details.")
+    );
+  }
+
+  // Review Mode indicator
+  const { ConfigManager } = await import("../config/index.js");
+  const configMgr = new ConfigManager(rootPath);
+  const config = await configMgr.load();
+  if (config.reviewMode === "solo-hardened") {
+    console.log(pc.bold("\nReview Mode:"));
+    console.log(
+      `  ${pc.yellow("⚠️  Solo Mode — self-approval enabled, adversarial review required")}`
     );
   }
 

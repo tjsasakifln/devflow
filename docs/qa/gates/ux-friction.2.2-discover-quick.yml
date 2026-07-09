@@ -1,0 +1,21 @@
+schema: 1
+story: '2.2'
+gate: CONCERNS
+status_reason: 'Core logic solid with 20/20 tests passing, but CLI layer does not register --quick/--full flags, making the feature inaccessible from the terminal.'
+reviewer: 'Quinn'
+updated: '2026-07-08T21:14:00Z'
+top_issues:
+  - id: 'MNT-001'
+    severity: medium
+    finding: 'CLI registration in src/cli/index.ts does not wire --quick and --full flags for the discover command. The discoverCommand function handles them, but Commander is not configured to parse them and the action handler does not forward them.'
+    suggested_action: 'Add .option("--quick", "...") and .option("--full", "...") to the discover command registration in src/cli/index.ts, and pass options.quick and options.full to discoverCommand().'
+  - id: 'MNT-002'
+    severity: low
+    finding: 'Story File List does not include src/cli/index.ts as a modified file even though CLI integration is required for the feature to work.'
+    suggested_action: 'Update the File List to include src/cli/index.ts as a modified file for proper traceability.'
+  - id: 'TEST-001'
+    severity: low
+    finding: 'No CLI-level integration test validates that --quick and --full flags are properly handled by the Commander registration.'
+    suggested_action: 'Add an integration test that validates the discover command registration includes --quick and --full options.'
+waiver:
+  active: false

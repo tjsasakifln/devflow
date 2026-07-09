@@ -1,1 +1,1 @@
-export { validateRequirements, validateRoadmap, validateActions, validateTestPlan } from '../validators/structural.js';
+export { validateRequirements, validateRequirementsVariant, validateRoadmap, validateRoadmapVariant, validateActions, validateTestPlan } from '../validators/structural.js';

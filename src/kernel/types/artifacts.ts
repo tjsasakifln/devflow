@@ -107,6 +107,25 @@ export interface DevflowConfig {
     enabled: boolean;
     requireDifferentActor: boolean;
   };
+  /** Sanity score configuration for artifact quality verification */
+  sanityScore: {
+    enabled: boolean;
+    /** Minimum content density percentage (user-written vs boilerplate) */
+    minContentDensity: number;
+    /** Minimum percentage of sections with substantive content */
+    minSectionCompletion: number;
+    /** Score below this blocks feature prompt generation */
+    blockingThreshold: number;
+    /** Custom additional placeholder terms to detect */
+    customPlaceholderTerms: string[];
+    /** Weight for each metric (must sum to 100) */
+    weights: {
+      contentDensity: number;
+      sectionCompletion: number;
+      specificityScore: number;
+      placeholderDetection: number;
+    };
+  };
   /** Review mode: independent requires different actor; solo-hardened allows self-approval with compensating evidence */
   reviewMode: "independent" | "solo-hardened";
   /** Risk tolerance: relaxed (solo, advisory gates), moderate (default), strict (all blocking, CI required) */

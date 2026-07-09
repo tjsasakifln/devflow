@@ -1,0 +1,24 @@
+schema: 1
+story: 'ux-friction.2.3'
+gate: CONCERNS
+status_reviewer: 'Quinn'
+updated: '2026-07-08T21:15:00Z'
+top_issues:
+  - id: 'REQ-001'
+    severity: high
+    finding: 'AC 5 not met: quickstart command is NOT registered in src/cli/index.ts — devflow --help does not show it, and the command is inaccessible to users'
+    suggested_action: 'Add quickstart command registration to src/cli/index.ts: import quickstartCommand, add program.command("quickstart") block as first command in a "Getting Started" help section'
+  - id: 'REQ-002'
+    severity: high
+    finding: 'AC 6 not met: devflow --help is NOT reorganized into 4 sections (Getting Started, Features, Review, Advanced) — help output uses default commander flat format'
+    suggested_action: 'Configure help text sections via commander addHelpText or formatHelp to organize commands into: Getting Started, Features, Review, Advanced'
+  - id: 'TEST-001'
+    severity: medium
+    finding: 'No tests for interactive wizard mode or help output format — existing tests cover non-interactive mode only'
+    suggested_action: 'Add tests for interactive mode (selectOption/confirmOrExit calls) and --help output format when help sections are implemented'
+  - id: 'MNT-001'
+    severity: low
+    finding: 'DoD checkboxes for AC 5-6 incorrectly marked as [x] (done) when implementation is missing'
+    suggested_action: 'Uncheck AC 5-6 checkboxes in DoD until CLI registration and help sections are implemented'
+waiver:
+  active: false

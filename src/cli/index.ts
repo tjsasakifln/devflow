@@ -34,6 +34,8 @@ import { testsReviewCommand } from "../commands/tests-review.js";
 import { actionsGenerateCommand } from "../commands/actions-generate.js";
 import { driftCheckCommand } from "../commands/drift-check.js";
 import { analyzeCommand } from "../commands/analyze.js";
+import { quickstartCommand } from "../commands/quickstart.js";
+import { sanityScoreCommand } from "../commands/sanity-score.js";
 import pc from "picocolors";
 
 /**
@@ -91,6 +93,16 @@ export function registerCommands(program: Command): void {
       });
     });
 
+  // ── Quickstart ──
+
+  program
+    .command("quickstart")
+    .description("Express onboarding wizard — get from zero to first feature in 3 steps")
+    .option("--non-interactive", "Show text-based guide instead of interactive prompts")
+    .action(async (_options) => {
+      await quickstartCommand(process.cwd());
+    });
+
    // ── Audit ──
 
   program
@@ -114,7 +126,9 @@ export function registerCommands(program: Command): void {
   configCmd
     .command("set <key> <value>")
     .description("Set a configuration value (e.g., reviewMode solo-hardened)")
-    .action(async (key: string, value: string) => {
+    .option("--require-justification", "Require a 1-line justification for riskTolerance changes")
+    .option("--justification <text>", "1-line justification for the config change")
+    .action(async (key: string, value: string, options: { requireJustification?: boolean; justification?: string }) => {
       const { ConfigManager } = await import("../config/index.js");
       const mgr = new ConfigManager(process.cwd());
       const config = await mgr.load();
@@ -142,6 +156,33 @@ export function registerCommands(program: Command): void {
         console.log(pc.yellow(`Invalid value for riskTolerance: ${value}`));
         console.log(pc.dim("Valid values: relaxed, moderate, strict"));
         return;
+      }
+
+      // Enforce justification requirement for riskTolerance changes
+      if (key === "riskTolerance" && value === "strict") {
+        const justification = options.justification;
+        if (!justification || justification.trim().length === 0) {
+          console.log(pc.red("❌ riskTolerance=strict requires a 1-line justification."));
+          console.log(pc.dim("   Use --justification \"<reason>\" to explain why strict mode is needed."));
+          return;
+        }
+        // Log the justification to bypass audit log
+        try {
+          const logEntry = JSON.stringify({
+            timestamp: new Date().toISOString(),
+            event: "config_change",
+            key: "riskTolerance",
+            value: "strict",
+            justification: justification.trim(),
+          });
+          const fs = await import("node:fs/promises");
+          const path = await import("node:path");
+          const logDir = path.join(process.cwd(), ".devflow", "audits");
+          await fs.mkdir(logDir, { recursive: true });
+          await fs.appendFile(path.join(logDir, "bypass-log.jsonl"), logEntry + "\n");
+        } catch {
+          // Non-blocking: log failure shouldn't prevent config change
+        }
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -210,15 +251,32 @@ export function registerCommands(program: Command): void {
     .description("Create a new feature workspace")
     .option("--actor <actor>", "Identity of the implementer (for role segregation)")
     .option("--non-interactive", "Skip interactive prompts (use template directly)")
-    .action(async (name: string, options: { actor?: string; nonInteractive?: boolean }) => {
-      await featureNewCommand(process.cwd(), name, options);
+    .option("--template <variant>", "Template variant: greenfield or brownfield (auto-detected if omitted)")
+    .option("--quick", "Generate all 4 artifacts using AI from a one-line description")
+    .action(async (name: string, rawOptions: { actor?: string; nonInteractive?: boolean; template?: string; quick?: boolean }) => {
+      // Validate --template option
+      let template: "greenfield" | "brownfield" | undefined;
+      if (rawOptions.template) {
+        if (rawOptions.template === "greenfield" || rawOptions.template === "brownfield") {
+          template = rawOptions.template;
+        } else {
+          console.log(pc.yellow(`Invalid --template value '${rawOptions.template}'. Expected greenfield or brownfield. Auto-detecting...`));
+        }
+      }
+      await featureNewCommand(process.cwd(), name, {
+        actor: rawOptions.actor,
+        nonInteractive: rawOptions.nonInteractive,
+        template,
+        quick: rawOptions.quick,
+      });
     });
 
   featureCmd
     .command("complete <id>")
     .description("Verify feature completion — runs 25 Definition of Done checks")
-    .action(async (id: string) => {
-      await featureComplete(id, process.cwd());
+    .option("--all", "Force all 25 checks regardless of feature state")
+    .action(async (id: string, options: { all?: boolean }) => {
+      await featureComplete(id, process.cwd(), { runAll: options.all });
     });
 
   featureCmd
@@ -249,9 +307,11 @@ export function registerCommands(program: Command): void {
     .command("adversarial-review <featureId>")
     .description(`Adversarial review — attempt to reject the feature across ${ADVERSARIAL_VECTOR_COUNT} attack vectors`)
     .option("--verify-mode <mode>", "Verification mode: deterministic (default) or adversarial (multi-agent)", "deterministic")
-    .action(async (featureId: string, options: { verifyMode?: string }) => {
+    .option("--install-missing", "Auto-install missing tools (npm install --save-dev)")
+    .option("--non-interactive", "Disable interactive prompts")
+    .action(async (featureId: string, options: { verifyMode?: string; installMissing?: boolean; nonInteractive?: boolean }) => {
       const verifyMode = options.verifyMode === "adversarial" ? "adversarial" : "deterministic";
-      await adversarialReview(featureId, process.cwd(), { verifyMode });
+      await adversarialReview(featureId, process.cwd(), { verifyMode, installMissing: options.installMissing, nonInteractive: options.nonInteractive });
     });
 
   // review-pr
@@ -315,7 +375,9 @@ export function registerCommands(program: Command): void {
     .command("discover")
     .description("Discover and document brownfield project structure, risks, testing baseline, and change zones")
     .option("--ai", "Use AI-assisted discovery (not yet available)")
-    .option("--phase <name>", "Run a specific discovery phase: scout, archaeologist, detective, architect, writer")
+    .option("--phase <name>", "Run a specific discovery phase: scout/scan, archaeologist/analyze, detective/deduce, architect/design, writer/document")
+    .option("--quick", "Quick mode: 3 essential reports + executive summary")
+    .option("--full", "Full pipeline: all 13 reports (default)")
     .action(async (options) => {
       if (options.ai) {
         renderPreviewStub(
@@ -325,7 +387,7 @@ export function registerCommands(program: Command): void {
           "Use devflow discover (without --ai) for structural discovery — generates 4 reports.",
         );
       } else {
-        await discoverCommand(process.cwd(), { phase: options.phase });
+        await discoverCommand(process.cwd(), { phase: options.phase, quick: options.quick, full: options.full });
       }
     });
 
@@ -404,6 +466,16 @@ export function registerCommands(program: Command): void {
     .description("AI-powered adversarial review — complements deterministic review with LLM analysis (falls back to deterministic if no AI provider)")
     .action(async (featureId: string) => {
       await adversarialReviewAI(featureId, process.cwd());
+    });
+
+  // ── Sanity Score ──
+
+  program
+    .command("sanity-score <featureId>")
+    .description("Score artifact quality — measures real content vs boilerplate across all 4 artifacts")
+    .option("--json", "Output as JSON")
+    .action(async (featureId: string, options: { json?: boolean }) => {
+      await sanityScoreCommand(process.cwd(), featureId, options);
     });
 
   // ── Eval ──

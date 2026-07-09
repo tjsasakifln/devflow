@@ -54,6 +54,19 @@ export const DEFAULTS: DevflowConfig = {
     enabled: true,
     requireDifferentActor: true,
   },
+  sanityScore: {
+    enabled: true,
+    minContentDensity: 40,
+    minSectionCompletion: 60,
+    blockingThreshold: 50,
+    customPlaceholderTerms: [],
+    weights: {
+      contentDensity: 30,
+      sectionCompletion: 25,
+      specificityScore: 25,
+      placeholderDetection: 20,
+    },
+  },
   reviewMode: "independent",
   riskTolerance: "moderate",
 };

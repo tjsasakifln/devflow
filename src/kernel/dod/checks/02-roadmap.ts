@@ -2,7 +2,8 @@
 import type { DoDCheckDecl } from "../types.js";
 import { safeReadFile } from "../../utils/fs.js";
 import path from "node:path";
-import { validateRoadmap } from "../../validators/structural.js";
+import { validateRoadmap, validateRoadmapVariant } from "../../validators/structural.js";
+import { detectProjectType } from "../../detection/project-type.js";
 
 export const check02Roadmap: DoDCheckDecl = {
   id: "02",
@@ -14,7 +15,7 @@ export const check02Roadmap: DoDCheckDecl = {
   timeoutMs: 5_000,
   blockingDefault: true,
   remediationTemplate:
-    "Crie roadmap.md com arquitetura, decisões de design, acoplamento, e rollback strategy.",
+    "Crie roadmap.md com as seções obrigatórias (5 para greenfield, 13 para brownfield).",
   evidenceSchema: "roadmap.md structural validation",
 
   async run(ctx) {
@@ -27,11 +28,15 @@ export const check02Roadmap: DoDCheckDecl = {
         blocking: true, remediation: this.remediationTemplate, evidence: [], durationMs: 0,
       };
     }
-    const v = validateRoadmap(content);
+    const projectType = await detectProjectType(ctx.rootPath);
+    const variant = projectType === "greenfield" ? "greenfield" : "brownfield";
+    const v = variant === "greenfield"
+      ? validateRoadmapVariant(content, "greenfield")
+      : validateRoadmap(content);
     return {
       checkId: "02", name: this.name, category: "artifact",
       passed: v.valid,
-      detail: v.valid ? "Todas as seções presentes" : `Seções faltando: ${v.missingSections.join(", ")}`,
+      detail: v.valid ? `Todas as seções presentes (template ${variant})` : `Seções faltando: ${v.missingSections.join(", ")}`,
       blocking: true, remediation: this.remediationTemplate, evidence: [], durationMs: 0,
     };
   },

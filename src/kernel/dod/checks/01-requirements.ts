@@ -2,12 +2,14 @@
  * DoD Check 01: Requirements Complete
  * Category: artifact
  * Verifies requirements.md exists with all mandatory sections.
+ * Uses variant-aware validation (greenfield vs brownfield).
  */
 
 import type { DoDCheckDecl } from "../types.js";
 import { safeReadFile } from "../../utils/fs.js";
 import path from "node:path";
-import { validateRequirements } from "../../validators/structural.js";
+import { validateRequirements, validateRequirementsVariant } from "../../validators/structural.js";
+import { detectProjectType } from "../../detection/project-type.js";
 
 export const check01Requirements: DoDCheckDecl = {
   id: "01",
@@ -19,7 +21,7 @@ export const check01Requirements: DoDCheckDecl = {
   timeoutMs: 5_000,
   blockingDefault: true,
   remediationTemplate:
-    "Preencha requirements.md com todas as seções obrigatórias: Descricao Funcional, Comportamento Esperado, Criterios de Aceitacao, etc.",
+    "Preencha requirements.md com todas as seções obrigatórias (10 para greenfield, 15 para brownfield).",
   evidenceSchema: "requirements.md structural validation",
 
   async run(ctx) {
@@ -38,14 +40,18 @@ export const check01Requirements: DoDCheckDecl = {
         durationMs: 0,
       };
     }
-    const validation = validateRequirements(content);
+    const projectType = await detectProjectType(ctx.rootPath);
+    const variant = projectType === "greenfield" ? "greenfield" : "brownfield";
+    const validation = variant === "greenfield"
+      ? validateRequirementsVariant(content, "greenfield")
+      : validateRequirements(content);
     return {
       checkId: "01",
       name: "Requirements claros e completos",
       category: "artifact",
       passed: validation.valid,
       detail: validation.valid
-        ? "Todas as seções obrigatórias presentes"
+        ? `Todas as seções obrigatórias presentes (template ${variant})`
         : `Seções faltando: ${validation.missingSections.join(", ")}${validation.emptySections.length > 0 ? `. Seções vazias: ${validation.emptySections.join(", ")}` : ""}`,
       blocking: true,
       remediation: this.remediationTemplate,

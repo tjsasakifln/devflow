@@ -24,6 +24,7 @@ import { runWriter } from "./writer.js";
 import { WorkflowEngine } from "../workflow/engine.js";
 
 export type PhaseName = "scout" | "archaeologist" | "detective" | "architect" | "writer";
+export type NewPhaseName = "scan" | "analyze" | "deduce" | "design" | "document";
 
 const PHASE_NAMES: PhaseName[] = ["scout", "archaeologist", "detective", "architect", "writer"];
 
@@ -34,6 +35,36 @@ const PHASE_LABELS: Record<PhaseName, string> = {
   architect: "Architect — Architecture Reconstruction",
   writer: "Writer — Specification Generation",
 };
+
+/**
+ * Phase Alias Map (old → new verb names)
+ * Enables backward-compatible phase name resolution.
+ */
+export const PHASE_ALIASES: Record<string, PhaseName> = {
+  // Old names (identity)
+  scout: "scout",
+  archaeologist: "archaeologist",
+  detective: "detective",
+  architect: "architect",
+  writer: "writer",
+  // New verb aliases (scout→scan, archaeologist→analyze, etc.)
+  scan: "scout",
+  analyze: "archaeologist",
+  deduce: "detective",
+  design: "architect",
+  document: "writer",
+};
+
+export const NEW_PHASE_NAMES: NewPhaseName[] = ["scan", "analyze", "deduce", "design", "document"];
+
+/**
+ * Resolve a phase name, accepting both old and new names.
+ * Returns the canonical PhaseName or undefined if not recognized.
+ */
+export function resolvePhaseName(name: string): PhaseName | undefined {
+  const normalized = name.toLowerCase().trim();
+  return PHASE_ALIASES[normalized];
+}
 
 export interface PhaseContext {
   scout?: ScoutReport;

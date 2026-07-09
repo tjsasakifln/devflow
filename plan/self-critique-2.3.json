@@ -1,16 +1,16 @@
 {
   "subtaskId": "2.3",
-  "critiquedAt": "2026-07-08T00:00:00Z",
+  "critiquedAt": "2026-07-08T20:50:00Z",
   "step5_5": {
     "predictedBugs": [
-      "Empty project directory produces empty scout reports instead of graceful 'no files found' messages",
-      "Non-standard source directories (app/, packages/, lib/) are missed by archaeologist/detective which default to src/",
-      "Prisma schema regex fails on models with multi-line attributes or @map decorators before the brace"
+      "hasDevflowDir() uses require('node:fs') which can throw in strict ESM contexts — should use async fs or import",
+      "review-pr path in executeFirstCommand resolves to src/cli/review-pr.js from commands/ quickstart context, was initially wrong and needed ../cli/ prefix",
+      "showTextGuide has two parallel logic branches (new vs existing without Devflow) that produce identical output — redundant but not harmful"
     ],
     "edgeCases": [
-      "Very large projects (1000+ files) truncated by head -40/-60 limits in execSync calls",
-      "Binary files in source dirs matched by grep producing noise in detective phase output",
-      "Non-English git commit messages bypass ADR keyword detection"
+      "Empty directory with no package.json, no tsconfig.json, no .git -> correctly detected as 'new' project",
+      "parallel Promise.all in detectProjectState — if one fileExists call throws, all fail. Safe because fileExists catches errors internally",
+      "Interactive mode: selectOption returns null on user cancellation, but @clack/prompts wrapper calls process.exit(0) before return — wizard never sees null"
     ],
     "errorHandling": true,
     "securityCheck": true,

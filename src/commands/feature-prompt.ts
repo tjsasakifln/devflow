@@ -15,6 +15,7 @@ export interface FeaturePromptOptions {
   output?: string;
   save?: boolean;
   preview?: boolean;
+  noWarnings?: boolean;
 }
 
 /**
@@ -58,6 +59,18 @@ export async function featurePromptCommand(
   const rootPath = path.resolve(cwd);
   const manager = new ArtifactManager(rootPath);
 
+  // ── Pre-command warnings (Story 2.4) ──
+  const { executePreCommandHooks, renderWarnings } =
+    await import("../kernel/hooks/pre-command.js");
+  const hooksCtx = {
+    commandName: "feature prompt",
+    featureId,
+    rootPath,
+    noWarnings: options.noWarnings ?? false,
+  };
+  const warnings = await executePreCommandHooks(hooksCtx);
+  renderWarnings(warnings);
+
   // ── Validate feature exists ──
   const activeFeature = await manager.readActiveFeature();
   const effectiveId = featureId || activeFeature?.featureId;
@@ -93,7 +106,7 @@ export async function featurePromptCommand(
   if (missing.length > 0) {
     console.log(
       pc.red(
-        `\n🚫 Cannot generate implementation prompt — ${missing.length} required artifact(s) missing.\n`,
+        `\nCannot generate implementation prompt — ${missing.length} required artifact(s) missing.\n`,
       ),
     );
     console.log(
@@ -112,6 +125,50 @@ export async function featurePromptCommand(
       `Run ${pc.bold("devflow next")} to see what to create next.\n`,
     );
     return;
+  }
+
+  // ── Sanity score gate: block if content quality below threshold ──
+  if (!options.preview) {
+    const { ConfigManager } = await import("../kernel/config/index.js");
+    const configMgr = new ConfigManager(rootPath);
+    const config = await configMgr.load();
+
+    if (config.sanityScore.enabled) {
+      const { runSanityScore } = await import("./sanity-score.js");
+      const scoreResult = await runSanityScore(rootPath, resolvedId);
+
+      if (!scoreResult.overallPassed) {
+        console.log(
+          pc.red(
+            `\nBlocked — Sanity score ${scoreResult.overallScore}/100 is below the blocking threshold (${config.sanityScore.blockingThreshold}/100).\n`,
+          ),
+        );
+        console.log(
+          pc.yellow(
+            "Devflow blocks implementation prompt generation until artifact content quality improves.\n",
+          ),
+        );
+
+        if (scoreResult.failures.length > 0) {
+          console.log(pc.bold("Issues found:"));
+          for (const failure of scoreResult.failures.slice(0, 5)) {
+            console.log(`  - ${failure}`);
+          }
+          console.log();
+        }
+
+        console.log(
+          pc.dim(
+            "Tip: Replace placeholder text with actual content. Use concrete names,\n" +
+              "values, file paths, and avoid generic phrases like 'best practices' or 'robust'.\n",
+          ),
+        );
+        console.log(
+          `Run ${pc.bold("devflow sanity-score " + resolvedId)} for detailed breakdown.\n`,
+        );
+        return;
+      }
+    }
   }
 
   // ── Read all artifacts ──

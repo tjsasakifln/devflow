@@ -3,7 +3,20 @@
 import { Command } from "commander";
 import { registerCommands } from "./cli/index.js";
 import { getVersion } from "./kernel/utils/version.js";
+import { registerWarning } from "./kernel/hooks/pre-command.js";
+import {
+  warnIncompleteArtifacts,
+  warnLowArtifactCompletion,
+  warnBrownfieldWithoutDiscover,
+  warnGatekeepWithoutAdversarial,
+} from "./kernel/hooks/warnings.js";
 import pc from "picocolors";
+
+// ── Register centralized pre-command warnings (Story 2.4) ──
+registerWarning(warnIncompleteArtifacts);
+registerWarning(warnLowArtifactCompletion);
+registerWarning(warnBrownfieldWithoutDiscover);
+registerWarning(warnGatekeepWithoutAdversarial);
 
 const program = new Command();
 
@@ -17,6 +30,7 @@ program
   .option("--mode <mode>", "Execution mode: local, experimental, strict, release", "local")
   .option("--verbose", "Verbose output")
   .option("--no-color", "Disable color output")
+  .option("--no-warnings", "Suppress proactive pre-command warnings")
   .addHelpCommand("help [command]", "Show help for a command");
 
 registerCommands(program);

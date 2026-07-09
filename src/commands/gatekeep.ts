@@ -2,14 +2,29 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import { fileExists, safeReadFile, atomicWrite } from "../utils/fs.js";
 import { getVersion } from "../kernel/utils/version.js";
+import { recordGatekeepSameActor } from "../kernel/tracking/bypass-detector.js";
+import { detectSoloDeveloper } from "../kernel/detection/solo.js";
+import { confirmOrExit } from "../kernel/utils/prompts.js";
 import pc from "picocolors";
 
 export async function gatekeep(
   featureId: string,
   rootPath: string,
-  options: { approve?: boolean; reject?: boolean; reason?: string; actor?: string }
+  options: { approve?: boolean; reject?: boolean; reason?: string; actor?: string; yes?: boolean; noWarnings?: boolean }
 ): Promise<void> {
   const featureDir = path.join(rootPath, "_devflow", "features", featureId);
+
+  // ── Pre-command warnings (Story 2.4) ──
+  const { executePreCommandHooks, renderWarnings } =
+    await import("../kernel/hooks/pre-command.js");
+  const hooksCtx = {
+    commandName: "gatekeep",
+    featureId,
+    rootPath,
+    noWarnings: options.noWarnings ?? false,
+  };
+  const warnings = await executePreCommandHooks(hooksCtx);
+  renderWarnings(warnings);
 
   console.log(pc.bold(`\nDevflow Gatekeep — ${featureId}\n`));
 
@@ -55,9 +70,10 @@ export async function gatekeep(
   const { ConfigManager } = await import("../config/index.js");
   const configMgr = new ConfigManager(rootPath);
   const config = await configMgr.load();
-  const mode = config.executionMode || "local";
-  const reviewMode = config.reviewMode || "independent";
+  let mode = config.executionMode || "local";
+  let reviewMode = config.reviewMode || "independent";
   const riskTolerance = config.riskTolerance || "moderate";
+  let soloHeaderShown = false;
 
   // ── Validate implementation log structure (strict/release) ──
   if ((mode === "strict" || mode === "release") && logExists) {
@@ -145,28 +161,69 @@ export async function gatekeep(
         console.log(pc.yellow(`   Gatekeeper:  ${gatekeeper}`));
         console.log(pc.yellow("   Risk: No independent review. Report will flag this as residual risk.\n"));
       } else {
-        console.log(pc.red("⛔ Gatekeep Refused — Implementer Cannot Approve\n"));
-        console.log(pc.red(`   Implementer: ${implementerActor}`));
-        console.log(pc.red(`   Gatekeeper:  ${gatekeeper}`));
-        console.log(pc.red("   Same actor cannot implement AND approve. Use a different agent/person.\n"));
-        console.log(pc.yellow("   Rule: Constitution C12 — Segregação de Papéis"));
-        console.log(pc.yellow("   Set DEVFLOW_ACTOR env var or use --actor flag to identify the gatekeeper.\n"));
-        console.log(pc.dim("   Tip: To allow self-approval, run: devflow config set riskTolerance relaxed"));
-        console.log(pc.dim("        Or for solo-hardened with compensating evidence:"));
-        console.log(pc.dim("        devflow config set reviewMode solo-hardened\n"));
-        return;
+        // ── Solo detection: check git committer count ──
+        const soloResult = detectSoloDeveloper(rootPath);
+        const hasTeam = soloResult.committerCount >= 2;
+
+        if (hasTeam) {
+          // Team detected — block normally
+          console.log(pc.red("⛔ Gatekeep Refused — Independent Review Required (Team Detected)\n"));
+          console.log(pc.red(`   Implementer: ${implementerActor}`));
+          console.log(pc.red(`   Gatekeeper:  ${gatekeeper}`));
+          console.log(pc.red(`   Committers (30d): ${soloResult.committerCount} — team project\n`));
+          console.log(pc.yellow("   Rule: Constitution C12 — Segregação de Papéis"));
+          console.log(pc.yellow("   Same actor cannot implement AND approve in a team project.\n"));
+          console.log(pc.dim("   Tip: To allow self-approval, run: devflow config set riskTolerance relaxed"));
+          console.log(pc.dim("        Or set reviewMode to solo-hardened with compensating evidence.\n"));
+          return;
+        }
+
+        // Solo developer detected — offer switch to solo-hardened
+        console.log(pc.yellow("🔒 C12: Independent review required.\n"));
+        console.log(pc.yellow(`   Implementer: ${implementerActor}`));
+        console.log(pc.yellow(`   Gatekeeper:  ${gatekeeper}`));
+        console.log(pc.yellow(`   Committers (30d): ${soloResult.committerCount} — solo project\n`));
+
+        if (soloResult.error) {
+          console.log(pc.dim(`   (git detection note: ${soloResult.error})\n`));
+        }
+
+        // Auto-switch with --yes flag, otherwise prompt
+        const shouldSwitch = options.yes || await confirmOrExit(
+          "You appear to be the only committer. Switch to solo-hardened mode?"
+        );
+
+        if (!shouldSwitch) {
+          console.log(pc.red("⛔ Gatekeep Refused — Implementer Cannot Approve\n"));
+          console.log(pc.red("   Solo-hardened mode was declined. Use a different agent/person to approve.\n"));
+          console.log(pc.dim("   Tip: Run `devflow config set reviewMode solo-hardened` to enable self-approval.\n"));
+          return;
+        }
+
+        // User accepted: update config to solo-hardened
+        config.reviewMode = "solo-hardened";
+        await configMgr.save(config);
+        reviewMode = "solo-hardened";
+        mode = config.executionMode || mode;
+
+        console.log(pc.green("✅ Config updated: reviewMode = solo-hardened\n"));
+
+        // Solo-hardened info block
+        soloHeaderShown = true;
       }
     }
   }
 
   if (reviewMode === "solo-hardened") {
-    console.log(pc.yellow("⚠️  Solo-Hardened Review Mode Active\n"));
-    console.log(pc.yellow("   Independent human review will NOT occur."));
-    console.log(pc.yellow("   Compensating evidence is required:"));
-    console.log(pc.yellow("     - Adversarial review must pass all 12 vectors"));
-    console.log(pc.yellow("     - All deterministic checks must pass"));
-    console.log(pc.yellow("     - Implementation log must be complete"));
-    console.log(pc.yellow("     - Final report will document this as solo-hardened approval\n"));
+    if (!soloHeaderShown) {
+      console.log(pc.yellow("⚠️  Solo-Hardened Review Mode Active\n"));
+      console.log(pc.yellow("   Independent human review will NOT occur."));
+      console.log(pc.yellow("   Compensating evidence is required:"));
+      console.log(pc.yellow("     - Adversarial review must pass all 12 vectors"));
+      console.log(pc.yellow("     - All deterministic checks must pass"));
+      console.log(pc.yellow("     - Implementation log must be complete"));
+      console.log(pc.yellow("     - Final report will document this as solo-hardened approval\n"));
+    }
 
     // Verify adversarial review exists
     const advReviewPath = path.join(rootPath, ".devflow", "audits", featureId, "adversarial-review.md");
@@ -291,6 +348,14 @@ export async function gatekeep(
   // Append to gatekeep log (read existing, append entry, atomic write)
   const existing = await safeReadFile(gatekeepLogPath);
   await atomicWrite(gatekeepLogPath, (existing || "") + JSON.stringify(gatekeepEntry) + "\n");
+
+  // ── Bypass tracking: detect same-actor approval without adversarial review ──
+  if (verdict === "approved" && gatekeeper === implementerActor && implementerActor !== "unknown") {
+    // Check if adversarial review was done
+    const advReviewPath = path.join(rootPath, ".devflow", "audits", featureId, "adversarial-review.md");
+    const hadAdversarialReview = await fileExists(advReviewPath);
+    await recordGatekeepSameActor(rootPath, featureId, gatekeeper, hadAdversarialReview);
+  }
 
   // ── Update state ──
   const statePath = path.join(rootPath, ".devflow", "state.json");

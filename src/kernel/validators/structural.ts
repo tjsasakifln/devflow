@@ -6,7 +6,10 @@ export interface ValidationResult {
   errors: string[];
 }
 
-const REQUIREMENTS_SECTIONS = [
+export type TemplateVariant = "brownfield" | "greenfield";
+
+// ── Brownfield (15 sections — full, includes legacy/delta) ──
+const REQUIREMENTS_BROWNFIELD_SECTIONS = [
   "Descrição Funcional",
   "Comportamento Esperado",
   "Invariantes de Domínio",
@@ -24,7 +27,22 @@ const REQUIREMENTS_SECTIONS = [
   "Riscos de Manutenção",
 ];
 
-const ROADMAP_SECTIONS = [
+// ── Greenfield (10 sections — no legacy/delta, simplified scope) ──
+const REQUIREMENTS_GREENFIELD_SECTIONS = [
+  "Descrição Funcional",
+  "Comportamento Esperado",
+  "Regras de Negócio",
+  "Entradas",
+  "Saídas",
+  "Dados Persistidos",
+  "Integrações Externas",
+  "Critérios de Aceitação",
+  "Casos de Erro",
+  "Requisitos Não-Funcionais",
+];
+
+// ── Brownfield (13 sections — full architecture with legacy impact) ──
+const ROADMAP_BROWNFIELD_SECTIONS = [
   "Desenho Arquitetural",
   "Camadas Envolvidas",
   "Classes",
@@ -40,6 +58,18 @@ const ROADMAP_SECTIONS = [
   "Verificação de Constitution",
 ];
 
+// ── Greenfield (5 sections — simplified, no legacy) ──
+const ROADMAP_GREENFIELD_SECTIONS = [
+  "Descrição Técnica",
+  "Decisões Técnicas",
+  "Estrutura de Arquivos",
+  "Dependências Externas",
+  "Riscos",
+];
+
+// ── Backward-compatible aliases ──
+// const REQUIREMENTS_SECTIONS = REQUIREMENTS_BROWNFIELD_SECTIONS; // preserved in git history
+// const ROADMAP_SECTIONS = ROADMAP_BROWNFIELD_SECTIONS; // preserved in git history
 const TEST_PLAN_SECTIONS = [
   "Test Strategy",
   "Unit Tests",
@@ -52,11 +82,21 @@ const TEST_PLAN_SECTIONS = [
 ];
 
 export function validateRequirements(md: string): ValidationResult {
-  return validateSections(md, REQUIREMENTS_SECTIONS);
+  return validateSections(md, REQUIREMENTS_BROWNFIELD_SECTIONS);
+}
+
+export function validateRequirementsVariant(md: string, variant: TemplateVariant): ValidationResult {
+  const sections = variant === "greenfield" ? REQUIREMENTS_GREENFIELD_SECTIONS : REQUIREMENTS_BROWNFIELD_SECTIONS;
+  return validateSections(md, sections);
 }
 
 export function validateRoadmap(md: string): ValidationResult {
-  return validateSections(md, ROADMAP_SECTIONS);
+  return validateSections(md, ROADMAP_BROWNFIELD_SECTIONS);
+}
+
+export function validateRoadmapVariant(md: string, variant: TemplateVariant): ValidationResult {
+  const sections = variant === "greenfield" ? ROADMAP_GREENFIELD_SECTIONS : ROADMAP_BROWNFIELD_SECTIONS;
+  return validateSections(md, sections);
 }
 
 export function validateTestPlan(md: string): ValidationResult {

@@ -1,0 +1,12 @@
+schema: 1
+story: '2.4'
+gate: CONCERNS
+status_reason: '3 of 4 warnings properly wired; feature-complete.ts missing executePreCommandHooks call (low artifact completion warning never fires, health summary not rendered for feature complete). All 14 new tests pass, no regressions.'
+reviewer: 'Quinn'
+updated: '2026-07-08T21:15:00Z'
+top_issues:
+  - id: 'MNT-001'
+    severity: medium
+    finding: 'feature-complete.ts does not call executePreCommandHooks — warning 2 (low artifact completion) and AC 1 (health summary) are not executed for the feature complete command'
+    suggested_action: 'Add executePreCommandHooks() call and renderWarnings() to featureComplete() in src/commands/feature-complete.ts, and add --no-warnings CLI option to the feature complete command registration in src/cli/index.ts'
+waiver: { active: false }

@@ -1,0 +1,17 @@
+schema: 1
+story: ux-friction.1.2
+gate: CONCERNS
+status_reason: 'All acceptance criteria met except AC4 (--all flag) — backend supports --all but CLI option not registered in src/cli/index.ts. Non-blocking: core state-filtering, skipped checks, and summary all work correctly.'
+reviewer: 'Quinn'
+updated: '2026-07-08T21:20:00Z'
+top_issues:
+  - id: 'CLI-001'
+    severity: medium
+    finding: 'AC4 not fully met: --all flag is NOT registered via .option("--all") in src/cli/index.ts for the feature complete command. Backend supports it (getApplicableCheckIds returns null when runAll=true) but users cannot invoke it from CLI.'
+    suggested_action: 'Add .option("--all", "Force all 25 checks regardless of feature state") to the feature complete command in src/cli/index.ts, and pass { runAll: true } in the action handler'
+  - id: 'TEST-001'
+    severity: low
+    finding: 'No test verifying CLI option registration for --all on the feature complete command'
+    suggested_action: 'Add a test confirming .option("--all") is registered on the complete command to prevent future CLI wiring gaps'
+waiver:
+  active: false

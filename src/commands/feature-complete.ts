@@ -6,15 +6,32 @@ import {
 } from "../utils/fs.js";
 import {
   validateRequirements,
+  validateRequirementsVariant,
   validateRoadmap,
+  validateRoadmapVariant,
   validateActions,
 } from "../kernel/artifacts/validator.js";
+import { detectProjectType } from "../kernel/detection/project-type.js";
+import type { ProjectType } from "../kernel/detection/project-type.js";
 import { runConstitutionCheck, getConstitutionCompliance } from "../kernel/constitution/checker.js";
 import { detectStackProfile } from "../kernel/detection/stack.js";
 import {
   toolFailedRemediation,
   type Remediation,
 } from "../kernel/errors/remediation.js";
+import {
+  getApplicableCheckIds,
+  getCheckRequiredState,
+} from "../kernel/checks/stage-filter.js";
+import { computeFeatureSanityScores } from "../kernel/checks/sanity-score.js";
+import {
+  executePreCommandHooks,
+  renderWarnings,
+  renderHealthSummary,
+  computeHealthSummary,
+} from "../kernel/hooks/pre-command.js";
+import { determineFeatureState } from "../kernel/state/detector.js";
+import type { DevflowState, FeatureInfo } from "../kernel/types/index.js";
 import pc from "picocolors";
 
 interface DoDCheck {
@@ -25,19 +42,102 @@ interface DoDCheck {
   evidence: string;
   blocking: boolean;
   remediation: string;
+  /** If set, the check was skipped because it is not applicable at the current feature state. */
+  skippedReason?: string;
 }
 
 export interface DoDResult {
   passed: number;
+  applicableTotal: number;
   total: number;
   ciStatus: string;
   allBlockingPassed: boolean;
   blockingFailed: Array<{ id: string; description: string; remediation: string }>;
 }
 
+/**
+ * Detect the current feature state by inspecting artifacts in the feature directory.
+ * Returns null if state cannot be determined (falls back to running all checks).
+ */
+async function detectFeatureStateFromDir(
+  featureDir: string,
+  featureId: string,
+): Promise<DevflowState | null> {
+  const [
+    hasRequirements,
+    hasRoadmap,
+    hasActions,
+    hasTestPlan,
+    hasImplementationLog,
+    hasLegacyImpact,
+    hasRegressionWatch,
+    hasQaReport,
+    hasClarification,
+    hasInvestigation,
+    hasDataDelta,
+    hasReleaseNotes,
+  ] = await Promise.all([
+    fileExists(path.join(featureDir, "requirements.md")),
+    fileExists(path.join(featureDir, "roadmap.md")),
+    fileExists(path.join(featureDir, "actions.md")),
+    fileExists(path.join(featureDir, "test-plan.md")),
+    fileExists(path.join(featureDir, "implementation-log.jsonl")),
+    fileExists(path.join(featureDir, "legacy-impact.md")),
+    fileExists(path.join(featureDir, "regression-watch.md")),
+    fileExists(path.join(featureDir, "qa-report.md")),
+    fileExists(path.join(featureDir, "clarification.md")),
+    fileExists(path.join(featureDir, "investigation.md")),
+    fileExists(path.join(featureDir, "data-delta.md")),
+    fileExists(path.join(featureDir, "release-notes.md")),
+  ]);
+
+  // Calculate actions completion ratio
+  let actionsCompletionRatio = 0;
+  if (hasActions) {
+    const actionsMd = await safeReadFile(path.join(featureDir, "actions.md"));
+    if (actionsMd) {
+      const total = (actionsMd.match(/-\s*\[[\sxX]\]/g) || []).length;
+      const done = (actionsMd.match(/-\s*\[[xX]\]/g) || []).length;
+      actionsCompletionRatio = total > 0 ? done / total : 0;
+    }
+  }
+
+  // Check for requirements doubts
+  const requirementsMd = hasRequirements
+    ? await safeReadFile(path.join(featureDir, "requirements.md"))
+    : null;
+  const requirementsDoubts = requirementsMd
+    ? requirementsMd.includes("[DOUBT]") || requirementsMd.includes("[DÚVIDA]")
+    : false;
+
+  const featureInfo: FeatureInfo = {
+    id: featureId,
+    directory: featureDir,
+    hasRequirements,
+    hasClarification,
+    hasQualityAudit: hasRoadmap && hasActions,
+    hasRoadmap,
+    hasActions,
+    hasInvestigation,
+    hasDataDelta,
+    hasQaReport,
+    hasLegacyImpact,
+    hasRegressionWatch,
+    hasReleaseNotes,
+    hasImplementationLog,
+    hasTestPlan,
+    requirementsDoubts,
+    actionsCompletionRatio,
+    isActive: true,
+  };
+
+  return determineFeatureState(featureInfo);
+}
+
 export async function featureComplete(
   featureId: string,
-  rootPath: string
+  rootPath: string,
+  options?: { runAll?: boolean }
 ): Promise<void> {
   const featureDir = path.join(rootPath, "_devflow", "features", featureId);
 
@@ -50,13 +150,43 @@ export async function featureComplete(
     riskTolerance = cfg.riskTolerance ?? "moderate";
   } catch { /* use default */ }
 
+  // ── Pre-command hooks ──
+  const hookResults = await executePreCommandHooks({
+    commandName: "feature complete",
+    featureId,
+    rootPath,
+    noWarnings: false,
+  });
+  if (hookResults.length > 0) {
+    renderWarnings(hookResults);
+  }
+
   console.log(pc.bold(`\nDevflow Feature Complete — ${featureId}\n`));
-  console.log(`Verifying Definition of Done (25 checks)...\n`);
+
+  // ── Stage-aware DoD: detect state and compute applicable checks ──
+  const runAll = options?.runAll ?? false;
+  const detectedState = await detectFeatureStateFromDir(featureDir, featureId);
+  const applicableIds = detectedState
+    ? getApplicableCheckIds(detectedState, runAll)
+    : null;
+
+  if (runAll) {
+    console.log(pc.dim(`   Mode: --all (all 25 checks forced)\n`));
+  } else if (applicableIds !== null && detectedState) {
+    const totalChecks = applicableIds.size;
+    console.log(pc.dim(`   State: ${detectedState} — ${totalChecks} applicable checks (use --all to force all 25)\n`));
+  } else {
+    console.log(`Verifying Definition of Done (25 checks)...\n`);
+  }
 
   const checks: DoDCheck[] = [];
-  await runAllDoDChecks(checks, rootPath, featureDir, riskTolerance);
+  await runAllDoDChecks(checks, rootPath, featureDir, riskTolerance, applicableIds);
 
-  renderDoDResults(checks, featureId);
+  renderDoDResults(checks, featureId, applicableIds);
+
+  // ── Health summary after DoD ──
+  const summary = await computeHealthSummary(featureDir);
+  renderHealthSummary(summary);
 
   // Auto-generate audit reports if all blocking pass
   const allBlockingPassed = checks.filter((c) => c.blocking && !c.passed).length === 0;
@@ -68,7 +198,8 @@ export async function featureComplete(
 // Exported for programmatic use (gatekeep calls this)
 export async function featureCompleteInternal(
   featureId: string,
-  rootPath: string
+  rootPath: string,
+  options?: { runAll?: boolean }
 ): Promise<DoDResult> {
   const featureDir = path.join(rootPath, "_devflow", "features", featureId);
 
@@ -81,16 +212,28 @@ export async function featureCompleteInternal(
     riskTolerance = cfg.riskTolerance ?? "moderate";
   } catch { /* use default */ }
 
+  // ── Stage-aware DoD: detect state and compute applicable checks ──
+  const runAll = options?.runAll ?? false;
+  const detectedState = await detectFeatureStateFromDir(featureDir, featureId);
+  const applicableIds = detectedState
+    ? getApplicableCheckIds(detectedState, runAll)
+    : null;
+
   const checks: DoDCheck[] = [];
-  await runAllDoDChecks(checks, rootPath, featureDir, riskTolerance);
+  await runAllDoDChecks(checks, rootPath, featureDir, riskTolerance, applicableIds);
 
   const allBlockingPassed = checks.filter((c) => c.blocking && !c.passed).length === 0;
   const blockingFailed = checks
     .filter((c) => c.blocking && !c.passed)
     .map((c) => ({ id: c.id, description: c.description, remediation: c.remediation }));
 
+  const applicableChecks = applicableIds !== null
+    ? checks.filter((c) => !c.skippedReason)
+    : checks;
+
   return {
-    passed: checks.filter((c) => c.passed).length,
+    passed: applicableChecks.filter((c) => c.passed).length,
+    applicableTotal: applicableChecks.length,
     total: checks.length,
     ciStatus: checks.find((c) => c.id === "16")?.evidence || "not-checked",
     allBlockingPassed,
@@ -312,86 +455,118 @@ async function buildStackToolChecks(rootPath: string, riskTolerance: "relaxed" |
   return checks;
 }
 
+/**
+ * Push a "skipped" check entry when a check is not applicable at the current state.
+ */
+function skipCheck(
+  checks: DoDCheck[],
+  checkId: string,
+  description: string,
+  category: DoDCheck["category"],
+): void {
+  const requiredState = getCheckRequiredState(checkId);
+  checks.push({
+    id: checkId,
+    description,
+    category,
+    passed: false,
+    evidence: `⏭️ SKIPPED (requires state: ${requiredState})`,
+    blocking: false,
+    remediation: `N/A — check not applicable until state: ${requiredState}. Use --all to force.`,
+    skippedReason: `Not applicable until state: ${requiredState}`,
+  });
+}
+
 async function runAllDoDChecks(
   checks: DoDCheck[],
   rootPath: string,
   featureDir: string,
   riskTolerance: "relaxed" | "moderate" | "strict" = "moderate",
+  applicableIds: Set<string> | null = null,
 ): Promise<void> {
-  // ── Checks 1-4: Artifact completeness ──
-  await checkRequirements(checks, featureDir, riskTolerance);
-  await checkRoadmap(checks, featureDir, riskTolerance);
-  await checkActions(checks, featureDir, riskTolerance);
-  await checkConstitution(checks, rootPath);
+  // Detect project type for variant-aware section validation
+  const projectType: ProjectType = await detectProjectType(rootPath);
+
+  // ── Checks 1-4: Artifact completeness (variant-aware) ──
+  await checkRequirements(checks, featureDir, riskTolerance, projectType, applicableIds);
+  await checkRoadmap(checks, featureDir, riskTolerance, projectType, applicableIds);
+  await checkActions(checks, featureDir, riskTolerance, applicableIds);
+  await checkConstitution(checks, rootPath, applicableIds);
 
   // ── Checks 5-8: Deterministic tools ──
-  await checkDeterministicTools(checks, rootPath, riskTolerance);
+  await checkDeterministicTools(checks, rootPath, riskTolerance, applicableIds);
 
   // ── Checks 9: Circular deps ──
-  await checkCircularDeps(checks, rootPath);
+  await checkCircularDeps(checks, rootPath, applicableIds);
 
-  // ── Checks 10-12: Artifacts presence ──
-  await checkSupportArtifacts(checks, featureDir, riskTolerance);
+  // ── Checks 10-11: Artifacts presence ──
+  await checkSupportArtifacts(checks, featureDir, riskTolerance, applicableIds);
 
-  // ── Check 13: Git branch ──
-  checkGitBranch(checks, rootPath);
+  // ── Check 12: Git branch ──
+  checkGitBranch(checks, rootPath, applicableIds);
 
-  // ── Check 14: TODO/FIXME ──
-  await checkTodos(checks, rootPath);
+  // ── Check 13: TODO/FIXME ──
+  await checkTodos(checks, rootPath, applicableIds);
 
-  // ── Check 15: ADRs ──
-  await checkADRs(checks, rootPath);
+  // ── Check 14: ADRs ──
+  await checkADRs(checks, rootPath, applicableIds);
 
-  // ── Check 16: Independent review ──
-  checkIndependentReview(checks, featureDir);
+  // ── Check 15: Independent review ──
+  checkIndependentReview(checks, featureDir, applicableIds);
 
-  // ── Check 17: CI verification ──
-  await checkCI(checks, rootPath, featureDir, riskTolerance);
+  // ── Check 16: CI verification ──
+  await checkCI(checks, rootPath, featureDir, riskTolerance, applicableIds);
 
-  // ── Check 18: OO quality ──
-  await checkOOQuality(checks, rootPath);
+  // ── Check 17: OO quality ──
+  await checkOOQuality(checks, rootPath, applicableIds);
 
-  // ── Check 19: Acceptance criteria ──
-  await checkAcceptanceCriteria(checks, featureDir);
+  // ── Check 18: Acceptance criteria ──
+  await checkAcceptanceCriteria(checks, featureDir, applicableIds);
 
-  // ── Check 20: Implementer ≠ approver ──
-  await checkImplementerSeparation(checks, featureDir, rootPath, riskTolerance);
+  // ── Check 19: Implementer ≠ approver ──
+  await checkImplementerSeparation(checks, featureDir, rootPath, riskTolerance, applicableIds);
 
-  // ── Check 21: Adversarial review ──
-  await checkAdversarialReview(checks, rootPath, featureDir);
+  // ── Check 20: Adversarial review ──
+  await checkAdversarialReview(checks, rootPath, featureDir, applicableIds);
 
-  // ── Check 22: Loop validation ──
-  await checkLoopValidation(checks, featureDir);
+  // ── Check 21: Loop validation ──
+  await checkLoopValidation(checks, featureDir, applicableIds);
 
-  // ── Check 23: Heuristic semantic quality ──
-  await checkSemanticQuality(checks, featureDir);
+  // ── Check 22: Sanity score ──
+  await checkSanityScore(checks, featureDir, rootPath, applicableIds);
 
-  // ── Check 24: Test plan ──
-  await checkTestPlan(checks, featureDir, riskTolerance);
+  // ── Check 23: Test plan ──
+  await checkTestPlan(checks, featureDir, riskTolerance, applicableIds);
 
-  // ── Check 25: Implementation log ──
-  await checkImplementationLog(checks, featureDir, rootPath);
+  // ── Checks 24-25: Implementation log + integrity consolidation ──
+  await checkImplementationLog(checks, featureDir, rootPath, applicableIds);
 }
 
 // ── Individual check functions ──
 
-async function checkRequirements(checks: DoDCheck[], featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
+async function checkRequirements(checks: DoDCheck[], featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate", projectType?: ProjectType, applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("1")) {
+    skipCheck(checks, "1", "Requirements claros e completos", "artifact");
+    return;
+  }
   const reqPath = path.join(featureDir, "requirements.md");
   const hasReqs = await fileExists(reqPath);
-  const blocking = riskTolerance !== "relaxed"; // advisory in relaxed mode
+  const blocking = riskTolerance !== "relaxed";
+  const variant = projectType ?? "brownfield";
+  const expectedSectionCount = variant === "greenfield" ? 10 : 15;
   if (hasReqs) {
     const md = (await safeReadFile(reqPath)) || "";
-    const v = validateRequirements(md);
+    const v = variant === "greenfield" ? validateRequirementsVariant(md, "greenfield") : validateRequirements(md);
     checks.push({
       id: "1",
       description: "Requirements claros e completos",
       category: "artifact",
       passed: v.valid && v.doubts === 0,
       evidence: v.valid
-        ? "All required sections complete"
+        ? `All ${expectedSectionCount} required sections complete (${variant} template)`
         : `Missing: ${[...v.missingSections, ...v.emptySections].join(", ")}`,
       blocking,
-      remediation: "Fill all 15 required sections in requirements.md",
+      remediation: `Fill all ${expectedSectionCount} required sections in requirements.md (${variant} template)`,
     });
   } else {
     checks.push({
@@ -401,28 +576,34 @@ async function checkRequirements(checks: DoDCheck[], featureDir: string, riskTol
       passed: false,
       evidence: "requirements.md not found",
       blocking,
-      remediation: "Create requirements.md with all 15 required sections",
+      remediation: `Create requirements.md with all ${expectedSectionCount} required sections (${variant} template)`,
     });
   }
 }
 
-async function checkRoadmap(checks: DoDCheck[], featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
+async function checkRoadmap(checks: DoDCheck[], featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate", projectType?: ProjectType, applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("2")) {
+    skipCheck(checks, "2", "Design documentado (roadmap.md)", "artifact");
+    return;
+  }
   const roadmapPath = path.join(featureDir, "roadmap.md");
   const hasRoadmap = await fileExists(roadmapPath);
   const blocking = riskTolerance !== "relaxed";
+  const variant = projectType ?? "brownfield";
+  const expectedSectionCount = variant === "greenfield" ? 5 : 13;
   if (hasRoadmap) {
     const md = (await safeReadFile(roadmapPath)) || "";
-    const v = validateRoadmap(md);
+    const v = variant === "greenfield" ? validateRoadmapVariant(md, "greenfield") : validateRoadmap(md);
     checks.push({
       id: "2",
       description: "Design documentado (roadmap.md)",
       category: "artifact",
       passed: v.valid,
       evidence: v.valid
-        ? "All required roadmap sections complete"
+        ? `All ${expectedSectionCount} required roadmap sections complete (${variant} template)`
         : `Missing: ${[...v.missingSections, ...v.emptySections].join(", ")}`,
       blocking,
-      remediation: "Fill all 13 required sections in roadmap.md",
+      remediation: `Fill all ${expectedSectionCount} required sections in roadmap.md (${variant} template)`,
     });
   } else {
     checks.push({
@@ -432,12 +613,16 @@ async function checkRoadmap(checks: DoDCheck[], featureDir: string, riskToleranc
       passed: false,
       evidence: "roadmap.md not found",
       blocking,
-      remediation: "Create roadmap.md with architecture, layers, patterns, interfaces",
+      remediation: `Create roadmap.md with all ${expectedSectionCount} required sections (${variant} template)`,
     });
   }
 }
 
-async function checkActions(checks: DoDCheck[], featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
+async function checkActions(checks: DoDCheck[], featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate", applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("3")) {
+    skipCheck(checks, "3", "Actions com evidências (todas [X])", "artifact");
+    return;
+  }
   const actionsPath = path.join(featureDir, "actions.md");
   const hasActions = await fileExists(actionsPath);
   const blocking = riskTolerance !== "relaxed";
@@ -469,7 +654,11 @@ async function checkActions(checks: DoDCheck[], featureDir: string, riskToleranc
   }
 }
 
-async function checkConstitution(checks: DoDCheck[], rootPath: string) {
+async function checkConstitution(checks: DoDCheck[], rootPath: string, applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("4")) {
+    skipCheck(checks, "4", "Arquitetura respeita constitution", "deterministic");
+    return;
+  }
   try {
     const constReport = await runConstitutionCheck(rootPath);
     const compliance = getConstitutionCompliance(constReport);
@@ -500,10 +689,15 @@ async function checkConstitution(checks: DoDCheck[], rootPath: string) {
   }
 }
 
-async function checkDeterministicTools(checks: DoDCheck[], rootPath: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
+async function checkDeterministicTools(checks: DoDCheck[], rootPath: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate", applicableIds?: Set<string> | null) {
   const toolChecks = await buildStackToolChecks(rootPath, riskTolerance);
 
   for (const tc of toolChecks) {
+    // Stage-aware: skip if this check ID is not applicable
+    if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has(tc.id)) {
+      skipCheck(checks, tc.id, tc.name, "deterministic");
+      continue;
+    }
     if (!tc.command) {
       // Diagnostic mode — tool not configured
       checks.push({
@@ -549,7 +743,11 @@ async function checkDeterministicTools(checks: DoDCheck[], rootPath: string, ris
   }
 }
 
-async function checkCircularDeps(checks: DoDCheck[], rootPath: string) {
+async function checkCircularDeps(checks: DoDCheck[], rootPath: string, applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("9")) {
+    skipCheck(checks, "9", "Imports circulares zero", "deterministic");
+    return;
+  }
   const stack = await detectStackProfile(rootPath);
 
   // Circular dep detection only applies to TypeScript/JavaScript projects
@@ -597,34 +795,47 @@ async function checkCircularDeps(checks: DoDCheck[], rootPath: string) {
   }
 }
 
-async function checkSupportArtifacts(checks: DoDCheck[], featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
+async function checkSupportArtifacts(checks: DoDCheck[], featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate", applicableIds?: Set<string> | null) {
   const blocking = riskTolerance === "strict"; // only blocking in strict mode
-  checks.push({
-    id: "10",
-    description: "Legacy impact analisado",
-    category: "artifact",
-    passed: await fileExists(path.join(featureDir, "legacy-impact.md")),
-    evidence: (await fileExists(path.join(featureDir, "legacy-impact.md")))
-      ? "legacy-impact.md found"
-      : "legacy-impact.md missing",
-    blocking,
-    remediation: "Create legacy-impact.md documenting affected modules",
-  });
 
-  checks.push({
-    id: "11",
-    description: "Regressões cobertas",
-    category: "artifact",
-    passed: await fileExists(path.join(featureDir, "regression-watch.md")),
-    evidence: (await fileExists(path.join(featureDir, "regression-watch.md")))
-      ? "regression-watch.md found"
-      : "regression-watch.md missing",
-    blocking,
-    remediation: "Create regression-watch.md with areas to monitor",
-  });
+  if (applicableIds === null || applicableIds === undefined || applicableIds.has("10")) {
+    checks.push({
+      id: "10",
+      description: "Legacy impact analisado",
+      category: "artifact",
+      passed: await fileExists(path.join(featureDir, "legacy-impact.md")),
+      evidence: (await fileExists(path.join(featureDir, "legacy-impact.md")))
+        ? "legacy-impact.md found"
+        : "legacy-impact.md missing",
+      blocking,
+      remediation: "Create legacy-impact.md documenting affected modules",
+    });
+  } else {
+    skipCheck(checks, "10", "Legacy impact analisado", "artifact");
+  }
+
+  if (applicableIds === null || applicableIds === undefined || applicableIds.has("11")) {
+    checks.push({
+      id: "11",
+      description: "Regressões cobertas",
+      category: "artifact",
+      passed: await fileExists(path.join(featureDir, "regression-watch.md")),
+      evidence: (await fileExists(path.join(featureDir, "regression-watch.md")))
+        ? "regression-watch.md found"
+        : "regression-watch.md missing",
+      blocking,
+      remediation: "Create regression-watch.md with areas to monitor",
+    });
+  } else {
+    skipCheck(checks, "11", "Regressões cobertas", "artifact");
+  }
 }
 
-function checkGitBranch(checks: DoDCheck[], rootPath: string) {
+function checkGitBranch(checks: DoDCheck[], rootPath: string, applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("12")) {
+    skipCheck(checks, "12", "Branch não é main", "git");
+    return;
+  }
   try {
     const branch = execSync("git branch --show-current", {
       cwd: rootPath, encoding: "utf-8",
@@ -654,7 +865,11 @@ function checkGitBranch(checks: DoDCheck[], rootPath: string) {
   }
 }
 
-async function checkTodos(checks: DoDCheck[], rootPath: string) {
+async function checkTodos(checks: DoDCheck[], rootPath: string, applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("13")) {
+    skipCheck(checks, "13", "Sem TODO/FIXME sem ticket", "deterministic");
+    return;
+  }
   const stack = await detectStackProfile(rootPath);
   const sourceDir = stack.sourceDir || "src";
 
@@ -720,7 +935,11 @@ async function checkTodos(checks: DoDCheck[], rootPath: string) {
   }
 }
 
-async function checkADRs(checks: DoDCheck[], rootPath: string) {
+async function checkADRs(checks: DoDCheck[], rootPath: string, applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("14")) {
+    skipCheck(checks, "14", "ADRs registrados (decisões relevantes)", "process");
+    return;
+  }
   const adrDir = path.join(rootPath, ".devflow", "decisions");
   const hasAdrDir = await fileExists(adrDir);
   // Check if decisions directory has any .md files
@@ -755,7 +974,11 @@ async function checkADRs(checks: DoDCheck[], rootPath: string) {
   });
 }
 
-function checkIndependentReview(checks: DoDCheck[], _featureDir: string) {
+function checkIndependentReview(checks: DoDCheck[], _featureDir: string, applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("15")) {
+    skipCheck(checks, "15", "Review independente aprovada", "review");
+    return;
+  }
   // Check for adversarial review report
   checks.push({
     id: "15",
@@ -768,7 +991,11 @@ function checkIndependentReview(checks: DoDCheck[], _featureDir: string) {
   });
 }
 
-async function checkCI(checks: DoDCheck[], rootPath: string, _featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
+async function checkCI(checks: DoDCheck[], rootPath: string, _featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate", applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("16")) {
+    skipCheck(checks, "16", "CI verification", "ci");
+    return;
+  }
   // In relaxed mode, CI is not checked at all
   if (riskTolerance === "relaxed") {
     checks.push({
@@ -847,7 +1074,11 @@ async function checkCI(checks: DoDCheck[], rootPath: string, _featureDir: string
   }
 }
 
-async function checkOOQuality(checks: DoDCheck[], rootPath: string) {
+async function checkOOQuality(checks: DoDCheck[], rootPath: string, applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("17")) {
+    skipCheck(checks, "17", "OO design quality (coupling, cohesion, complexity)", "deterministic");
+    return;
+  }
   try {
     const { ConfigManager } = await import("../config/index.js");
     const configMgr = new ConfigManager(rootPath);
@@ -889,7 +1120,11 @@ async function checkOOQuality(checks: DoDCheck[], rootPath: string) {
   }
 }
 
-async function checkAcceptanceCriteria(checks: DoDCheck[], featureDir: string) {
+async function checkAcceptanceCriteria(checks: DoDCheck[], featureDir: string, applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("18")) {
+    skipCheck(checks, "18", "Acceptance criteria verificáveis (≥3 Gherkin, error cases)", "domain");
+    return;
+  }
   const tpPath = path.join(featureDir, "test-plan.md");
   if (await fileExists(tpPath)) {
     try {
@@ -931,7 +1166,11 @@ async function checkAcceptanceCriteria(checks: DoDCheck[], featureDir: string) {
   }
 }
 
-async function checkImplementerSeparation(checks: DoDCheck[], featureDir: string, rootPath: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
+async function checkImplementerSeparation(checks: DoDCheck[], featureDir: string, rootPath: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate", applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("19")) {
+    skipCheck(checks, "19", "Implementer ≠ Approver (atores diferentes)", "process");
+    return;
+  }
   // Check review mode from config
   const { ConfigManager } = await import("../config/index.js");
   const configMgr = new ConfigManager(rootPath);
@@ -1016,7 +1255,11 @@ async function checkImplementerSeparation(checks: DoDCheck[], featureDir: string
   }
 }
 
-async function checkAdversarialReview(checks: DoDCheck[], rootPath: string, featureDir: string) {
+async function checkAdversarialReview(checks: DoDCheck[], rootPath: string, featureDir: string, applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("20")) {
+    skipCheck(checks, "20", "Adversarial review completed and passing", "review");
+    return;
+  }
   const featureId = path.basename(featureDir);
   const reviewPath = path.join(rootPath, ".devflow", "audits", featureId, "adversarial-review.md");
   const exists = await fileExists(reviewPath);
@@ -1047,7 +1290,11 @@ async function checkAdversarialReview(checks: DoDCheck[], rootPath: string, feat
   }
 }
 
-async function checkLoopValidation(checks: DoDCheck[], featureDir: string) {
+async function checkLoopValidation(checks: DoDCheck[], featureDir: string, applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("21")) {
+    skipCheck(checks, "21", "Agentic loop validation", "process");
+    return;
+  }
   const actionsPath = path.join(featureDir, "actions.md");
   if (await fileExists(actionsPath)) {
     try {
@@ -1092,39 +1339,58 @@ async function checkLoopValidation(checks: DoDCheck[], featureDir: string) {
   }
 }
 
-async function checkSemanticQuality(checks: DoDCheck[], featureDir: string) {
-  const reqPath = path.join(featureDir, "requirements.md");
-  if (await fileExists(reqPath)) {
-    try {
-      const md = (await safeReadFile(reqPath)) || "";
-      const { validateRequirementsSemantic } = await import("../kernel/validators/semantic.js");
-      const result = validateRequirementsSemantic(md);
-      checks.push({
-        id: "22",
-        description: "Heuristic semantic quality (artifacts have real content, not boilerplate)",
-        category: "artifact",
-        passed: result.valid,
-        evidence: result.valid
-          ? `Heuristic quality score: ${result.score}/100`
-          : `Heuristic quality gaps: ${result.failures.map((f) => `${f.section}: ${f.issue}`).join("; ")}`,
-        blocking: true,
-        remediation: `Replace generic placeholder content. Heuristic score: ${result.score}/100. Issues: ${result.failures.map((f) => f.issue).join(". ")}`,
-      });
-    } catch {
-      checks.push({
-        id: "22",
-        description: "Heuristic semantic quality (artifacts have real content)",
-        category: "artifact",
-        passed: true,
-        evidence: "Heuristic semantic validator not available",
-        blocking: false,
-        remediation: "N/A",
-      });
+async function checkSanityScore(checks: DoDCheck[], featureDir: string, _rootPath: string, applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("22")) {
+    skipCheck(checks, "22", "Artifact sanity score (real content vs boilerplate across all 4 artifacts)", "artifact");
+    return;
+  }
+  try {
+    // Read all 4 artifact files
+    const artifactNames = ["requirements.md", "roadmap.md", "actions.md", "test-plan.md"];
+    const artifacts: Record<string, string | null> = {};
+    for (const name of artifactNames) {
+      const filePath = path.join(featureDir, name);
+      artifacts[name] = (await fileExists(filePath)) ? (await safeReadFile(filePath)) || "" : null;
     }
+
+    const result = computeFeatureSanityScores(artifacts);
+    const totalScore = result.overallScore;
+    const color = totalScore >= 80 ? "🟢" : totalScore >= 50 ? "🟡" : "🔴";
+    const details = Object.entries(result.artifacts)
+      .map(([name, scores]) => `${name}: ${scores.score}/100`)
+      .join(", ");
+
+    checks.push({
+      id: "22",
+      description: "Artifact sanity score (real content vs boilerplate across all 4 artifacts)",
+      category: "artifact",
+      passed: totalScore >= 40,
+      evidence: `${color} Sanity score: ${totalScore}/100 [${details}]`,
+      blocking: totalScore < 40,
+      remediation: totalScore < 40
+        ? `Artifacts contain too much placeholder content (score: ${totalScore}/100). Replace generic sections with real project-specific information.`
+        : totalScore < 80
+          ? `Artifact quality is acceptable but could be improved (score: ${totalScore}/100). Review weak sections.`
+          : "N/A",
+    });
+  } catch {
+    checks.push({
+      id: "22",
+      description: "Artifact sanity score (real content vs boilerplate across all 4 artifacts)",
+      category: "artifact",
+      passed: false,
+      evidence: "⚠️ ADVISORY — Sanity score engine not available",
+      blocking: false,
+      remediation: "Verify that the sanity-score module is properly installed. Run devflow doctor for diagnostics.",
+    });
   }
 }
 
-async function checkTestPlan(checks: DoDCheck[], featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate") {
+async function checkTestPlan(checks: DoDCheck[], featureDir: string, riskTolerance: "relaxed" | "moderate" | "strict" = "moderate", applicableIds?: Set<string> | null) {
+  if (applicableIds !== null && applicableIds !== undefined && !applicableIds.has("23")) {
+    skipCheck(checks, "23", "Test plan completo com edge cases e error scenarios", "artifact");
+    return;
+  }
   const tpPath = path.join(featureDir, "test-plan.md");
   const blocking = riskTolerance !== "relaxed";
   checks.push({
@@ -1140,29 +1406,41 @@ async function checkTestPlan(checks: DoDCheck[], featureDir: string, riskToleran
   });
 }
 
-async function checkImplementationLog(checks: DoDCheck[], featureDir: string, rootPath: string) {
-  const logPath = path.join(featureDir, "implementation-log.jsonl");
-  const exists = await fileExists(logPath);
-  let hasContent = false;
-  let logRaw: string | null = null;
-  if (exists) {
-    logRaw = await safeReadFile(logPath);
-    hasContent = !!logRaw && logRaw.trim().length > 0;
+async function checkImplementationLog(checks: DoDCheck[], featureDir: string, rootPath: string, applicableIds?: Set<string> | null) {
+  // Check 24
+  if (applicableIds === null || applicableIds === undefined || applicableIds.has("24")) {
+    const logPath = path.join(featureDir, "implementation-log.jsonl");
+    const exists = await fileExists(logPath);
+    let hasContent = false;
+    let logRaw: string | null = null;
+    if (exists) {
+      logRaw = await safeReadFile(logPath);
+      hasContent = !!logRaw && logRaw.trim().length > 0;
+    }
+    checks.push({
+      id: "24",
+      description: "Implementation log atualizado com entradas",
+      category: "artifact",
+      passed: hasContent,
+      evidence: hasContent
+        ? "implementation-log.jsonl has entries"
+        : "implementation-log.jsonl missing or empty",
+      blocking: true,
+      remediation: "Record each action execution in implementation-log.jsonl",
+    });
+  } else {
+    skipCheck(checks, "24", "Implementation log atualizado com entradas", "artifact");
   }
-  checks.push({
-    id: "24",
-    description: "Implementation log atualizado com entradas",
-    category: "artifact",
-    passed: hasContent,
-    evidence: hasContent
-      ? "implementation-log.jsonl has entries"
-      : "implementation-log.jsonl missing or empty",
-    blocking: true,
-    remediation: "Record each action execution in implementation-log.jsonl",
-  });
 
-  // Final gate: Integrity consolidation — validates cross-check consistency
-  {
+  // Check 25: Final gate — Integrity consolidation
+  if (applicableIds === null || applicableIds === undefined || applicableIds.has("25")) {
+    const logPath = path.join(featureDir, "implementation-log.jsonl");
+    const exists = await fileExists(logPath);
+    let logRaw: string | null = null;
+    if (exists) {
+      logRaw = await safeReadFile(logPath);
+    }
+
     const blockingChecks = checks.filter((c) => c.blocking);
     const allBlockingPassed = blockingChecks.every((c) => c.passed);
     const failedBlocking = blockingChecks.filter((c) => !c.passed);
@@ -1221,17 +1499,31 @@ async function checkImplementationLog(checks: DoDCheck[], featureDir: string, ro
         ? `Fix integrity issues: ${issues.join(". ")}.`
         : "Run devflow adversarial-review and gatekeep to complete the audit trail.",
     });
+  } else {
+    skipCheck(checks, "25", "Integrity consolidation (cross-check all blocking gates, logs, reviews)", "process");
   }
 }
 
 // ── Result rendering ──
 
-function renderDoDResults(checks: DoDCheck[], featureId: string) {
-  console.log(pc.bold(`Definition of Done — ${checks.length} Checks\n`));
+function renderDoDResults(checks: DoDCheck[], featureId: string, applicableIds: Set<string> | null = null) {
+  const applicableChecks = applicableIds !== null
+    ? checks.filter((c) => !c.skippedReason)
+    : checks;
+  const skippedCount = checks.length - applicableChecks.length;
+
+  console.log(pc.bold(`Definition of Done — ${applicableChecks.length} applicable checks${skippedCount > 0 ? ` (${skippedCount} skipped)` : ""}\n`));
 
   let allBlockingPassed = true;
 
   for (const check of checks) {
+    if (check.skippedReason) {
+      // Render skipped checks in dim text
+      console.log(`  ${pc.dim("⏭️")} ${pc.dim(`[${check.category}]`)} ${pc.dim(check.description)}`);
+      console.log(`    ${pc.dim(check.evidence)}`);
+      continue;
+    }
+
     const icon = check.passed ? pc.green("✓") : check.blocking ? pc.red("✖") : pc.yellow("⚠");
     const category = pc.dim(`[${check.category}]`);
     console.log(`  ${icon} ${category} ${check.description}`);
@@ -1244,28 +1536,32 @@ function renderDoDResults(checks: DoDCheck[], featureId: string) {
 
   console.log();
 
-  const totalPassed = checks.filter((c) => c.passed).length;
-  const total = checks.length;
+  const totalPassed = applicableChecks.filter((c) => c.passed).length;
+  const total = applicableChecks.length;
 
   if (allBlockingPassed) {
-    const needsHumanReview = checks.find((c) => c.id === "15" && !c.passed);
+    const needsHumanReview = applicableChecks.find((c) => c.id === "15" && !c.passed);
     if (needsHumanReview) {
-      console.log(pc.yellow(`⚠️  ${totalPassed}/${total} checks passed. All blocking checks passed.`));
+      console.log(pc.yellow(`⚠️  ${totalPassed}/${total} applicable checks passed. All blocking checks passed.`));
       console.log(pc.yellow("   ⚠️  Gatekeeper review required before merge."));
       console.log(`\n   Run ${pc.bold("devflow gatekeep " + featureId)} to approve or reject.`);
     } else {
-      console.log(pc.green(`✅ ${totalPassed}/${total} checks passed — feature ready for merge.`));
+      console.log(pc.green(`✅ ${totalPassed}/${total} applicable checks passed — feature ready for merge.`));
       console.log(`\n   Run ${pc.bold(`git checkout main && git merge feature/${featureId}`)}`);
     }
   } else {
-    const failed = checks.filter((c) => !c.passed && c.blocking);
-    console.log(pc.red(`❌ ${failed.length}/${total} blocking checks failed. Fix before completing feature.\n`));
+    const failed = applicableChecks.filter((c) => !c.passed && c.blocking);
+    console.log(pc.red(`❌ ${failed.length}/${total} applicable checks blocking. Fix before completing feature.\n`));
     console.log(pc.bold("Failed blocking checks:"));
     for (const f of failed) {
       console.log(pc.red(`  ✖ [${f.id}] ${f.description}`));
       console.log(pc.yellow(`    → ${f.remediation}`));
     }
     console.log(pc.yellow("\n   Devflow blocks completion until all blocking checks pass.\n"));
+  }
+
+  if (skippedCount > 0) {
+    console.log(pc.dim(`   ${skippedCount} check(s) skipped — not applicable at current feature state (use --all to force).`));
   }
 
   console.log();

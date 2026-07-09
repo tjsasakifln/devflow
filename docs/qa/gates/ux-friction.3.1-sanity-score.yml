@@ -1,0 +1,21 @@
+schema: 1
+story: '3.1'
+gate: FAIL
+status_reviewer: 'Check 22 (heuristic semantic quality) was NOT replaced in feature-complete.ts; the silent catch still passes on validator failure; the sanity-score CLI command is not registered in cli/index.ts. 3 of 7 acceptance criteria not met.'
+reviewer: 'Quinn'
+updated: '2026-07-08T21:15:00Z'
+top_issues:
+  - id: 'REQ-001'
+    severity: high
+    finding: 'AC 4 - Check 22 not replaced. checkSemanticQuality() still exists in feature-complete.ts at line 1320 and is still invoked at line 514. No sanity score check was added to the DoD checks. The old heuristic semantic quality check runs alongside the new sanity score engine, duplicating effort and maintaining the original bug.'
+    suggested_action: 'Replace checkSemanticQuality() call in runAllDoDChecks() with a sanity-score-based check. Remove checkSemanticQuality function entirely. Add SanityScore integration as the replacement DoD check.'
+  - id: 'REQ-002'
+    severity: high
+    finding: 'AC 5 - Validator failure still silently passes. The catch block in checkSemanticQuality() at line 1342 sets passed: true when the heuristic validator is unavailable. The story explicitly requires that validator failure shows ADVISORY instead of silent PASS.'
+    suggested_action: 'Change the catch block in checkSemanticQuality() (or its replacement) to set passed: false with status ADVISORY when validator is unavailable, not passed: true.'
+  - id: 'REQ-003'
+    severity: medium
+    finding: 'AC 7 - Standalone sanity-score command not registered in CLI. The sanityScoreCommand function exists in src/commands/sanity-score.ts but is neither imported nor registered in src/cli/index.ts. Users cannot run `devflow sanity-score <featureId>`.'
+    suggested_action: 'Import sanityScoreCommand in cli/index.ts and register it as a command: program.command("sanity-score <featureId>").'
+waiver:
+  active: false

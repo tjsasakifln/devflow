@@ -19,35 +19,97 @@ import { detectStackProfile } from "../kernel/detection/stack.js";
 import type { StackProfile } from "../kernel/detection/stack.js";
 import { scanFiles } from "../adapters/project/file-scanner.js";
 import { fileExists, safeReadFile } from "../kernel/utils/fs.js";
-import { runDiscovery } from "../kernel/discovery/orchestrator.js";
-import type { PhaseName } from "../kernel/discovery/orchestrator.js";
+import { runDiscovery, resolvePhaseName } from "../kernel/discovery/orchestrator.js";
 import { CompletenessCritic } from "../kernel/orchestration/completeness-critic.js";
 import type { AnalysisContext } from "../kernel/orchestration/completeness-critic.js";
 
-const VALID_PHASES: PhaseName[] = ["scout", "archaeologist", "detective", "architect", "writer"];
-
 export interface DiscoverOptions {
   phase?: string;
+  quick?: boolean;
+  full?: boolean;
 }
 
 export async function discoverCommand(rootPath: string, options?: DiscoverOptions): Promise<void> {
-  const phase = options?.phase as PhaseName | undefined;
+  const phase = options?.phase ? resolvePhaseName(options.phase) : undefined;
+  const quickMode = options?.quick ?? false;
+
+  // Handle --phase (single phase, backward-compatible with both old and new names)
+  if (options?.phase && !phase) {
+    console.log(pc.red(`Invalid phase: "${options.phase}"`));
+    console.log(pc.dim(`Valid phase names (old / new):`));
+    console.log(pc.dim(`  scout / scan        — Project Structure`));
+    console.log(pc.dim(`  archaeologist / analyze — Code Analysis`));
+    console.log(pc.dim(`  detective / deduce  — Business Logic`));
+    console.log(pc.dim(`  architect / design  — Architecture Reconstruction`));
+    console.log(pc.dim(`  writer / document   — Specification Generation`));
+    console.log(pc.dim("Usage: devflow discover --phase=<name>"));
+    return;
+  }
 
   if (phase) {
-    // Deep discovery with single phase
-    if (!VALID_PHASES.includes(phase)) {
-      console.log(pc.red(`Invalid phase: "${phase}"`));
-      console.log(pc.dim(`Valid phases: ${VALID_PHASES.join(", ")}`));
-      console.log(pc.dim("Usage: devflow discover --phase=<name>"));
-      return;
-    }
-
+    // Deep discovery with single phase (accepts both old and new names)
     console.log(pc.bold(`\nDevflow Discover — Phase: ${phase}\n`));
     await runDiscovery({ phase, rootPath });
     return;
   }
 
-  // Full discovery — use the 5-phase orchestrated workflow
+  // ── QUICK MODE ──
+  if (quickMode) {
+    await discoverQuick(rootPath);
+    return;
+  }
+
+  // ── FULL MODE (default) ──
+  await discoverFull(rootPath);
+}
+
+/**
+ * Quick discovery — generates exactly 3 essential reports.
+ */
+async function discoverQuick(rootPath: string): Promise<void> {
+  const discoveryDir = path.join(rootPath, "_devflow", "discovery");
+  await mkdir(discoveryDir, { recursive: true });
+
+  console.log(pc.bold("\nDevflow Discover — Quick Mode\n"));
+  console.log(pc.dim("Generating 3 essential reports for a 10-minute codebase overview...\n"));
+
+  const stack = await detectStackProfile(rootPath);
+  const scanner = await scanFiles(rootPath);
+
+  // ── 1. system-map.md ──
+  console.log(pc.blue("→") + " Generating system-map.md...");
+  const systemMap = await buildSystemMap(rootPath, stack, scanner);
+  await writeFile(path.join(discoveryDir, "system-map.md"), systemMap, "utf-8");
+
+  // ── 2. risk-map.md ──
+  console.log(pc.blue("→") + " Generating risk-map.md...");
+  const riskMap = await buildRiskMap(rootPath, stack, scanner);
+  await writeFile(path.join(discoveryDir, "risk-map.md"), riskMap, "utf-8");
+
+  // ── 3. change-zones.md ──
+  console.log(pc.blue("→") + " Generating change-zones.md...");
+  const changeZones = await buildChangeZones(rootPath, stack, scanner);
+  await writeFile(path.join(discoveryDir, "change-zones.md"), changeZones, "utf-8");
+
+  // ── Executive Summary ──
+  const summary = await buildExecutiveSummary(rootPath, stack);
+  await writeFile(path.join(discoveryDir, "executive-summary.md"), summary, "utf-8");
+
+  console.log(pc.green("\n✅ Quick discovery complete!\n"));
+  console.log(pc.bold("Reports generated in:"), discoveryDir);
+  console.log(`  ${pc.dim("→")} system-map.md         — System structure & dependencies`);
+  console.log(`  ${pc.dim("→")} risk-map.md           — Top technical risks`);
+  console.log(`  ${pc.dim("→")} change-zones.md       — Change safety zones`);
+  console.log(`  ${pc.dim("→")} executive-summary.md   — 1-page executive overview`);
+  console.log();
+  console.log(pc.dim("Next: devflow feature new <name> to start a brownfield feature."));
+  console.log(pc.dim("      Use devflow discover --full for the complete 13-report pipeline.\n"));
+}
+
+/**
+ * Full discovery — the complete 13-report pipeline.
+ */
+async function discoverFull(rootPath: string): Promise<void> {
   const discoveryDir = path.join(rootPath, "_devflow", "discovery");
   await mkdir(discoveryDir, { recursive: true });
 
@@ -828,6 +890,66 @@ async function buildChangeZones(
 }
 
 // ── Utility Functions ──
+
+/**
+ * Build a 1-page executive summary of the codebase for quick mode.
+ */
+async function buildExecutiveSummary(
+  _rootPath: string,
+  stack: StackProfile,
+): Promise<string> {
+  const lines: string[] = [];
+
+  lines.push("# Executive Summary");
+  lines.push("");
+  lines.push(`> Generated: ${new Date().toISOString()}`);
+  lines.push(`> Stack: ${stack.language}${stack.packageManager ? ` (${stack.packageManager})` : ""}`);
+  lines.push("");
+
+  lines.push("## Overview");
+  lines.push("");
+  lines.push("This executive summary consolidates findings from the 3 quick-discovery reports:");
+  lines.push("- **system-map.md** — project structure, entry points, dependencies, stack");
+  lines.push("- **risk-map.md** — top technical risks (large files, TODOs, untested modules, security)");
+  lines.push("- **change-zones.md** — modification safety zones (safe, caution, no-touch)");
+  lines.push("");
+
+  // Quick stats
+  lines.push("## Quick Stats");
+  lines.push("");
+  lines.push(`- **Language:** ${stack.language}`);
+  lines.push(`- **Package Manager:** ${stack.packageManager ?? "none detected"}`);
+  lines.push(`- **Source Dir:** \`${stack.sourceDir}/\``);
+  lines.push(`- **Test Dir:** \`${stack.testDir}/\``);
+  if (stack.typeChecker) lines.push(`- **Type Checker:** ${stack.typeChecker}`);
+  if (stack.linter) lines.push(`- **Linter:** ${stack.linter}`);
+  if (stack.testFramework) lines.push(`- **Test Framework:** ${stack.testFramework}`);
+  if (stack.formatter) lines.push(`- **Formatter:** ${stack.formatter}`);
+  if (stack.hasDocker) lines.push("- **Docker:** Detected");
+  if (stack.hasCI) lines.push(`- **CI:** ${stack.ciProvider ?? "Detected"}`);
+  lines.push("");
+
+  // Risk summary
+  lines.push("## Key Findings");
+  lines.push("");
+  lines.push("Review the following reports for detailed analysis:");
+  lines.push("");
+  lines.push("1. **System Structure** — Review entry points, module layout, and dependency graph in system-map.md.");
+  lines.push("2. **Risk Areas** — Identify large files, TODO debt, untested modules, and security concerns in risk-map.md.");
+  lines.push("3. **Change Safety** — Understand which areas are safe to modify and which require ADRs in change-zones.md.");
+  lines.push("");
+
+  // Recommendations
+  lines.push("## Recommended Next Steps");
+  lines.push("");
+  lines.push("1. Run \`devflow discover --full\` for the complete 13-report deep-dive");
+  lines.push("2. Start with safe zones when planning your first feature");
+  lines.push("3. Address risk-map findings before introducing new complexity");
+  lines.push("4. Use \`devflow feature new <name>\` to begin work");
+  lines.push("");
+
+  return lines.join("\n");
+}
 
 async function detectEntrypoints(
   rootPath: string,

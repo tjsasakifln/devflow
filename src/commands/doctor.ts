@@ -10,6 +10,7 @@ import { getVersion } from "../kernel/utils/version.js";
 import { resolveInvocationCommand } from "../kernel/utils/cli-resolver.js";
 import { ensureDevflowCommand, readDevflowCommandPrefix } from "../adapters/integration/claude-commands.js";
 import { renderRemediation } from "../errors/remediation.js";
+import { detectBypassPatterns } from "../kernel/tracking/bypass-detector.js";
 import type { Remediation } from "../errors/remediation.js";
 import pc from "picocolors";
 
@@ -275,22 +276,62 @@ export async function doctorCommand(
     checks.push({ id: 9, name: "Artifact consistency", status: "PASS", message: "No active feature" });
   }
 
-  // ── 10. Git remote ──
+  // ── 10. Artifact Sanity Score ──
+  if (activeFeature) {
+    const featurePath = path.join(rootPath, "_devflow", "features", activeFeature.featureId);
+    if (await fileExists(featurePath)) {
+      try {
+        const { runSanityScore } = await import("./sanity-score.js");
+        const scoreResult = await runSanityScore(rootPath, activeFeature.featureId);
+        if (scoreResult.overallPassed) {
+          checks.push({
+            id: 10, name: "Artifact sanity score", status: "PASS",
+            message: `${scoreResult.overallScore}/100 — all artifacts pass quality threshold`,
+          });
+        } else {
+          checks.push({
+            id: 10, name: "Artifact sanity score", status: "FAIL",
+            message: `${scoreResult.overallScore}/100 — below quality threshold. ${scoreResult.failures.slice(0, 3).join("; ")}`,
+            remediation: {
+              title: "Artifact content quality below threshold",
+              whyMatters: "Placeholder-filled artifacts bypass real quality assurance. Generated code will lack substance.",
+              impact: "Implementation prompts may produce low-quality code based on vague requirements.",
+              suggestedFix: `Run \`devflow sanity-score ${activeFeature.featureId}\` for detailed breakdown, then replace placeholder text with real content.`,
+              minimalExample: "devflow sanity-score " + activeFeature.featureId,
+              severity: "blocking",
+              copyableCommand: "devflow sanity-score " + activeFeature.featureId,
+            },
+          });
+        }
+      } catch {
+        checks.push({
+          id: 10, name: "Artifact sanity score", status: "INFO",
+          message: "Sanity score engine not available",
+        });
+      }
+    } else {
+      checks.push({ id: 10, name: "Artifact sanity score", status: "INFO", message: "No active feature directory to score" });
+    }
+  } else {
+    checks.push({ id: 10, name: "Artifact sanity score", status: "INFO", message: "No active feature to score" });
+  }
+
+  // ── 11. Git remote ──
   try {
     const remotes = execSync("git remote -v", { cwd: rootPath, encoding: "utf-8" }).trim();
     if (remotes) {
-      checks.push({ id: 10, name: "Git remote", status: "PASS", message: "Remote configured" });
+      checks.push({ id: 11, name: "Git remote", status: "PASS", message: "Remote configured" });
     } else {
       checks.push({
-        id: 10, name: "Git remote", status: "INFO",
+        id: 11, name: "Git remote", status: "INFO",
         message: "No git remote — push and CI integration won't work",
       });
     }
   } catch {
-    checks.push({ id: 10, name: "Git remote", status: "INFO", message: "Not a git repository or no remote" });
+    checks.push({ id: 11, name: "Git remote", status: "INFO", message: "Not a git repository or no remote" });
   }
 
-  // ── 11. DEVFLOW.md staleness ──
+  // ── 12. DEVFLOW.md staleness ──
   const devflowMdPath = path.join(rootPath, "DEVFLOW.md");
   if (await fileExists(devflowMdPath)) {
     try {
@@ -300,10 +341,10 @@ export async function doctorCommand(
         const stateStat = await stat(stateFile);
         const diffMs = Math.abs(devflowStat.mtimeMs - stateStat.mtimeMs);
         if (diffMs < 60_000) {
-          checks.push({ id: 11, name: "DEVFLOW.md freshness", status: "PASS", message: "In sync with state.json" });
+          checks.push({ id: 12, name: "DEVFLOW.md freshness", status: "PASS", message: "In sync with state.json" });
         } else {
           checks.push({
-            id: 11, name: "DEVFLOW.md freshness", status: canFix ? "FIXED" : "INFO",
+            id: 12, name: "DEVFLOW.md freshness", status: canFix ? "FIXED" : "INFO",
             message: canFix ? "Regenerated" : "Stale — run devflow update-cockpit",
             remediation: {
               title: "DEVFLOW.md is stale",
@@ -324,10 +365,10 @@ export async function doctorCommand(
           }
         }
       } else {
-        checks.push({ id: 11, name: "DEVFLOW.md freshness", status: "INFO", message: "Cannot verify (no state.json)" });
+        checks.push({ id: 12, name: "DEVFLOW.md freshness", status: "INFO", message: "Cannot verify (no state.json)" });
       }
     } catch {
-      checks.push({ id: 11, name: "DEVFLOW.md freshness", status: "INFO", message: "Cannot read file stats" });
+      checks.push({ id: 12, name: "DEVFLOW.md freshness", status: "INFO", message: "Cannot read file stats" });
     }
   } else if (canFix) {
     const inspection = await inspectProject(rootPath);
@@ -335,26 +376,26 @@ export async function doctorCommand(
     const recommendation = computeRecommendation(stateResult, inspection);
     const cockpit = generateCockpit(stateResult, recommendation, inspection);
     await manager.safeWrite(devflowMdPath, cockpit, "DEVFLOW.md");
-    checks.push({ id: 11, name: "DEVFLOW.md freshness", status: "FIXED", message: "Created DEVFLOW.md" });
+    checks.push({ id: 12, name: "DEVFLOW.md freshness", status: "FIXED", message: "Created DEVFLOW.md" });
   } else {
     checks.push({
-      id: 11, name: "DEVFLOW.md freshness", status: "INFO",
+      id: 12, name: "DEVFLOW.md freshness", status: "INFO",
       message: "DEVFLOW.md missing — run devflow update-cockpit",
     });
   }
 
-  // ── 12. Constitution config ──
+  // ── 13. Constitution config ──
   const constitutionPath = path.join(rootPath, ".devflow", "constitution.md");
   if (await fileExists(constitutionPath)) {
-    checks.push({ id: 12, name: "Constitution config", status: "PASS", message: "constitution.md present" });
+    checks.push({ id: 13, name: "Constitution config", status: "PASS", message: "constitution.md present" });
   } else {
     checks.push({
-      id: 12, name: "Constitution config", status: "INFO",
+      id: 13, name: "Constitution config", status: "INFO",
       message: "No custom constitution — Devflow uses built-in 12-rule constitution (C1-C12)",
     });
   }
 
-  // ── 13. CI references .devflow (gitignored) ──
+  // ── 14. CI references .devflow (gitignored) ──
   {
     const ciPath = path.join(rootPath, ".github", "workflows", "ci.yml");
     const gitignorePath = path.join(rootPath, ".gitignore");
@@ -379,7 +420,7 @@ export async function doctorCommand(
 
     if (devflowIgnored && ciRefsDevflow) {
       checks.push({
-        id: 13, name: "CI .devflow/ references", status: "FAIL",
+        id: 14, name: "CI .devflow/ references", status: "FAIL",
         message: "CI workflow references .devflow/ but it is gitignored — CI won't have these files",
         remediation: {
           title: "CI references unversioned files",
@@ -391,13 +432,13 @@ export async function doctorCommand(
         },
       });
     } else if (devflowIgnored && !ciRefsDevflow) {
-      checks.push({ id: 13, name: "CI .devflow/ references", status: "PASS", message: "CI does not reference gitignored .devflow/ paths" });
+      checks.push({ id: 14, name: "CI .devflow/ references", status: "PASS", message: "CI does not reference gitignored .devflow/ paths" });
     } else {
-      checks.push({ id: 13, name: "CI .devflow/ references", status: "INFO", message: "CI not detected or .devflow/ not gitignored" });
+      checks.push({ id: 14, name: "CI .devflow/ references", status: "INFO", message: "CI not detected or .devflow/ not gitignored" });
     }
   }
 
-  // ── 14. CLI version — record only; sync check only for Devflow's own repo ──
+  // ── 15. CLI version — record only; sync check only for Devflow's own repo ──
   {
     const cliVersion = getVersion();
     let pkgName = "";
@@ -415,10 +456,10 @@ export async function doctorCommand(
     // Only compare versions when running inside Devflow's own repository
     if (pkgName === "@tjsasakinpm/devflow") {
       if (cliVersion === pkgVersion) {
-        checks.push({ id: 14, name: "CLI version sync", status: "PASS", message: `CLI ${cliVersion} matches package.json ${pkgVersion}` });
+        checks.push({ id: 15, name: "CLI version sync", status: "PASS", message: `CLI ${cliVersion} matches package.json ${pkgVersion}` });
       } else {
         checks.push({
-          id: 14, name: "CLI version sync", status: "FAIL",
+          id: 15, name: "CLI version sync", status: "FAIL",
           message: `CLI reports ${cliVersion} but package.json is ${pkgVersion}`,
           remediation: {
             title: "Version mismatch",
@@ -432,11 +473,11 @@ export async function doctorCommand(
       }
     } else {
       // External project: just record CLI version, don't compare
-      checks.push({ id: 14, name: "CLI version", status: "INFO", message: `Devflow CLI ${cliVersion} (project: ${pkgName || path.basename(rootPath)} ${pkgVersion})` });
+      checks.push({ id: 15, name: "CLI version", status: "INFO", message: `Devflow CLI ${cliVersion} (project: ${pkgName || path.basename(rootPath)} ${pkgVersion})` });
     }
   }
 
-  // ── 15. CI tools in devDependencies ──
+  // ── 16. CI tools in devDependencies ──
   {
     const ciPath = path.join(rootPath, ".github", "workflows", "ci.yml");
     if (await fileExists(ciPath) && await fileExists(pkgPath)) {
@@ -467,7 +508,7 @@ export async function doctorCommand(
 
         if (missingTools.length > 0) {
           checks.push({
-            id: 15, name: "CI tool availability", status: "FAIL",
+            id: 16, name: "CI tool availability", status: "FAIL",
             message: `CI uses tools not in devDependencies: ${missingTools.join(", ")}`,
             remediation: {
               title: "CI tools missing from package.json",
@@ -479,17 +520,17 @@ export async function doctorCommand(
             },
           });
         } else {
-          checks.push({ id: 15, name: "CI tool availability", status: "PASS", message: "All CI tools are in devDependencies" });
+          checks.push({ id: 16, name: "CI tool availability", status: "PASS", message: "All CI tools are in devDependencies" });
         }
       } catch {
-        checks.push({ id: 15, name: "CI tool availability", status: "INFO", message: "Cannot parse CI config or package.json" });
+        checks.push({ id: 16, name: "CI tool availability", status: "INFO", message: "Cannot parse CI config or package.json" });
       }
     } else {
-      checks.push({ id: 15, name: "CI tool availability", status: "INFO", message: "No CI workflow or package.json to check" });
+      checks.push({ id: 16, name: "CI tool availability", status: "INFO", message: "No CI workflow or package.json to check" });
     }
   }
 
-  // ── 16. .devflow gitignored but project uses Devflow (self-check) ──
+  // ── 17. .devflow gitignored but project uses Devflow (self-check) ──
   {
     const gitignorePath = path.join(rootPath, ".gitignore");
     let devflowIgnored = false;
@@ -505,12 +546,12 @@ export async function doctorCommand(
 
     if (devflowIgnored && isDevflowProject) {
       checks.push({
-        id: 16, name: ".devflow/ gitignore awareness", status: "INFO",
+        id: 17, name: ".devflow/ gitignore awareness", status: "INFO",
         message: ".devflow/ is gitignored (expected) — local state, not versioned. CI must not depend on it.",
       });
     } else if (!devflowIgnored && isDevflowProject) {
       checks.push({
-        id: 16, name: ".devflow/ gitignore awareness", status: "INFO",
+        id: 17, name: ".devflow/ gitignore awareness", status: "INFO",
         message: ".devflow/ is NOT gitignored — consider adding it to .gitignore (local state only)",
         remediation: {
           title: ".devflow/ should be gitignored",
@@ -522,11 +563,11 @@ export async function doctorCommand(
         },
       });
     } else {
-      checks.push({ id: 16, name: ".devflow/ gitignore awareness", status: "INFO", message: "Devflow not initialized in this project" });
+      checks.push({ id: 17, name: ".devflow/ gitignore awareness", status: "INFO", message: "Devflow not initialized in this project" });
     }
   }
 
-  // ── 17. CLI Invocability ──
+  // ── 18. CLI Invocability ──
   {
     const isDevflowProject = await fileExists(path.join(rootPath, ".devflow", "config.json"));
     if (isDevflowProject) {
@@ -567,18 +608,18 @@ export async function doctorCommand(
             }
             await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
             checks.push({
-              id: 17, name: "CLI Invocability", status: "FIXED",
+              id: 18, name: "CLI Invocability", status: "FIXED",
               message: `Added ${added} npm scripts: devflow, devflow:status, devflow:doctor, devflow:audit, devflow:next`,
             });
           } catch {
             checks.push({
-              id: 17, name: "CLI Invocability", status: "FAIL",
+              id: 18, name: "CLI Invocability", status: "FAIL",
               message: "Could not write npm scripts to package.json",
             });
           }
         } else if (canFix && hasPackageJson && !inDevDeps && !inDeps) {
           checks.push({
-            id: 17, name: "CLI Invocability", status: "FAIL",
+            id: 18, name: "CLI Invocability", status: "FAIL",
             message: "Devflow state exists but CLI not persistently installed",
             remediation: {
               title: "Devflow is not installed persistently",
@@ -595,7 +636,7 @@ export async function doctorCommand(
             ? "npm install --save-dev @tjsasakinpm/devflow"
             : "npm install -g @tjsasakinpm/devflow";
           checks.push({
-            id: 17, name: "CLI Invocability", status: "FAIL",
+            id: 18, name: "CLI Invocability", status: "FAIL",
             message: "Devflow state exists, but the bare `devflow` command is not invocable in this shell",
             remediation: {
               title: "Devflow CLI not persistently available",
@@ -610,19 +651,19 @@ export async function doctorCommand(
         }
       } else {
         checks.push({
-          id: 17, name: "CLI Invocability", status: "PASS",
+          id: 18, name: "CLI Invocability", status: "PASS",
           message: `Available via: ${resolved.command}`,
         });
       }
     } else {
       checks.push({
-        id: 17, name: "CLI Invocability", status: "INFO",
+        id: 18, name: "CLI Invocability", status: "INFO",
         message: "Devflow not initialized in this project",
       });
     }
   }
 
-  // ── 18. Claude Code integration ──
+  // ── 19. Claude Code integration ──
   {
     const commandPath = path.join(rootPath, ".claude", "commands", "devflow.md");
     const commandExists = await fileExists(commandPath);
@@ -631,7 +672,7 @@ export async function doctorCommand(
       const currentPrefix = await readDevflowCommandPrefix(rootPath);
       if (currentPrefix === resolved.command) {
         checks.push({
-          id: 18, name: "Claude Code integration", status: "PASS",
+          id: 19, name: "Claude Code integration", status: "PASS",
           message: `/devflow slash command registered (prefix: ${resolved.command})`,
         });
       } else if (currentPrefix !== null) {
@@ -639,12 +680,12 @@ export async function doctorCommand(
         if (canFix) {
           await ensureDevflowCommand(rootPath, resolved.command);
           checks.push({
-            id: 18, name: "Claude Code integration", status: "FIXED",
+            id: 19, name: "Claude Code integration", status: "FIXED",
             message: `Updated /devflow prefix: "${currentPrefix}" → "${resolved.command}"`,
           });
         } else {
           checks.push({
-            id: 18, name: "Claude Code integration", status: "FAIL",
+            id: 19, name: "Claude Code integration", status: "FAIL",
             message: `/devflow has wrong prefix: "${currentPrefix}" (expected: "${resolved.command}")`,
             remediation: {
               title: "Claude Code slash command prefix outdated",
@@ -660,7 +701,7 @@ export async function doctorCommand(
       } else {
         // File exists but without Devflow marker — user-owned, don't touch
         checks.push({
-          id: 18, name: "Claude Code integration", status: "INFO",
+          id: 19, name: "Claude Code integration", status: "INFO",
           message: ".claude/commands/devflow.md exists but is not Devflow-managed (user-owned content)",
         });
       }
@@ -671,12 +712,12 @@ export async function doctorCommand(
         if (canFix) {
           await ensureDevflowCommand(rootPath, resolved.command);
           checks.push({
-            id: 18, name: "Claude Code integration", status: "FIXED",
+            id: 19, name: "Claude Code integration", status: "FIXED",
             message: `Created /devflow slash command (prefix: ${resolved.command})`,
           });
         } else {
           checks.push({
-            id: 18, name: "Claude Code integration", status: "FAIL",
+            id: 19, name: "Claude Code integration", status: "FAIL",
             message: "/devflow slash command not registered — run doctor --fix",
             remediation: {
               title: "Claude Code slash command missing",
@@ -691,10 +732,40 @@ export async function doctorCommand(
         }
       } else {
         checks.push({
-          id: 18, name: "Claude Code integration", status: "INFO",
+          id: 19, name: "Claude Code integration", status: "INFO",
           message: "Devflow not initialized — /devflow command not needed yet",
         });
       }
+    }
+  }
+
+  // ── 20. Bypass pattern detection ──
+  {
+    const bypassReport = await detectBypassPatterns(rootPath);
+    if (bypassReport.hasDesperation) {
+      const details = bypassReport.patterns
+        .map((p) => `${p.description}`)
+        .join("; ");
+      checks.push({
+        id: 20, name: "Bypass pattern detection", status: "FAIL",
+        message: `${bypassReport.totalPatterns} bypass pattern(s) detected: ${details}`,
+        remediation: {
+          title: "Quality gates are being circumvented",
+          whyMatters: "Systematic bypass of gates means bad code can reach production without proper checks.",
+          impact: `${bypassReport.qualityDebtCount} feature(s) with bypassed gates.`,
+          suggestedFix: bypassReport.patterns
+            .map((p) => p.suggestion)
+            .join(" Also: "),
+          minimalExample: "devflow config set riskTolerance moderate --require-justification",
+          severity: "advisory",
+          copyableCommand: "devflow config set riskTolerance moderate --require-justification",
+        },
+      });
+    } else {
+      checks.push({
+        id: 20, name: "Bypass pattern detection", status: "PASS",
+        message: "No bypass patterns detected — gate usage looks healthy",
+      });
     }
   }
 

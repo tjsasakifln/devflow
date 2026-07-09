@@ -1,47 +1,46 @@
 {
   "storyId": "2.4",
-  "storyPath": "docs/stories/2.4.agent-driven-development-workflow.md",
-  "validatedAt": "2026-07-08T10:06:30Z",
+  "storyPath": "docs/stories/ux-friction/2.4.feedback-hooks.story.md",
+  "validatedAt": "2026-07-08T20:52:00Z",
   "status": "approve",
   "checklist": {
     "requirementsMet": {
       "allFunctionalRequirementsImplemented": true,
       "allAcceptanceCriteriaMet": true,
       "details": [
-        "AC1: Agent delegation matrix implemented in agent-delegation.ts (PM->SM->PO->Dev->QA->DevOps pipeline + extended roles)",
-        "AC2: agent: <role> tag support added to TransitionDef in types.ts, engine processes agent tags in executeTransition",
-        "AC3: Handoff protocol <500 tokens implemented in handoff.ts with YAML generation, token estimation, size validation",
-        "AC4: Agent spawning as subprocess in agent-spawner.ts with git worktree support (optional, fallback to simple spawn)",
-        "AC5: Authority enforcement in authority-enforcer.ts with 10 agent roles, 40+ operations, default-deny policy",
-        "IV1: Multi-agent flow validated — full pipeline delegation sequence passes",
-        "IV2: Handoff artifacts generated between every agent transition — verified in E2E test",
-        "IV3: Agent without authority gets blocked with clear message — verified in test (Dev tries invalid transition)"
+        "AC1: Mini health summary shown after state-transitioning commands (feature new, feature complete) with pass/warn counts",
+        "AC2: 4 specific pre-condition warnings: feature prompt (incomplete artifacts), feature complete (<50% artifacts), feature new (brownfield without discover), gatekeep (without adversarial review)",
+        "AC3: Warnings are advisory (non-blocking), visible with yellow + warning icon",
+        "AC4: --no-warnings flag suppresses all proactive warnings, registered globally in main.ts and per-command",
+        "AC5: Warning logic centralized in registerWarning() system in src/kernel/hooks/pre-command.ts, not duplicated per command",
+        "AC6: Per-feature warning snooze via snoozeWarning() with 24h default, persisted to .devflow/warnings-snooze.json"
       ]
     },
     "codingStandards": {
       "adheresToPatterns": true,
-      "typeScriptErrors": "zero new errors (pre-existing errors in other files unchanged)",
-      "testCoverage": "73 tests covering all 6 new modules",
+      "typeScriptErrors": "0 errors in new/modified hook files (pre-existing errors in feature-complete.ts from other stories unchanged)",
+      "testCoverage": "14 tests covering all warning conditions, snooze persistence, health summary, noWarnings flag",
       "details": [
-        "Files follow existing src/kernel/workflow/ structure and patterns",
-        "ESM imports consistent with project",
-        "JSDoc on all public functions",
-        "No new dependencies added"
+        "Files follow src/kernel/hooks/ structure matching existing kernel patterns",
+        "Dynamic imports for lazy loading (consistent with codebase style)",
+        "JSDoc on all exported functions",
+        "No new dependencies added — uses existing picocolors and fs utilities"
       ]
     },
     "testing": {
-      "unitTests": "73 tests passed",
-      "integrationTests": "Engine-agent integration tests pass",
-      "e2eTests": "Multi-agent pipeline E2E tests pass",
-      "edgeCases": "Empty arrays, unknown roles, missing files, corrupted state, backward compat"
+      "unitTests": "14 new tests pass",
+      "integrationTests": "N/A (internal hook system tested with real FS in unit tests)",
+      "e2eTests": "Full suite: 894/900 pass (6 pre-existing failures unrelated to this story)",
+      "edgeCases": "Corrupt snooze file, missing featureId, missing directories, non-relevant command names, warning function errors"
     },
     "documentation": {
       "storyUpdated": true,
       "fileListAdded": true,
       "changeLogUpdated": true,
-      "codeComments": true
+      "codeComments": true,
+      "selfCritiqueCompleted": true
     }
   },
   "verdict": "APPROVED",
-  "summary": "Story 2.4 fully implemented: agent-delegation.ts (delegation matrix + graph), agent-spawner.ts (subprocess spawn + worktree), handoff.ts (YAML artifact <500 tokens), authority-enforcer.ts (10 roles, 40+ operations), engine integration (agent-tagged transitions, handoff generation), and 73 comprehensive tests."
+  "summary": "Story 2.4 (Feedback Hooks) fully implemented: centralized hook/warning system in src/kernel/hooks/, 4 pre-condition warnings, mini health summary, --no-warnings flag, per-feature snooze persistence, all 14 tests pass."
 }

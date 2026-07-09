@@ -1,16 +1,17 @@
 {
   "subtaskId": "1.3",
-  "critiquedAt": "2026-07-08T09:30:00Z",
+  "critiquedAt": "2026-07-08T23:49:00Z",
   "step5_5": {
     "predictedBugs": [
-      "Missed import in a dynamically-constructed path string — grep only catches literal 'from.*src/constitution/' patterns, but string concatenation or template literals could hide a reference",
-      "Path resolution error if a file we didn't analyze uses a different relative depth (e.g., import from a test under a subdirectory)",
-      "The re-export shim removal breaks anyone still depending on src/constitution/ paths — confirmed zero direct imports except tests (which we updated)"
+      "detectSoloDeveloper uses execSync (sync) - if git binary is missing or permission denied, catch falls back to not-solo (safe default).",
+      "When user accepts solo-hardened switch, reviewMode is updated in-memory but solo-hardened section header is skipped via soloHeaderShown flag. Inline duplicate code must stay in sync with the main block.",
+      "Multiple email aliases for same developer could falsely show 2+ committers, triggering team enforcement when actually solo. Git shortlog groups by email identity."
     ],
     "edgeCases": [
-      "Module resolution via tsconfig paths/aliases — verified no path alias points to src/constitution/",
-      "Config files referencing src/constitution/ (tsconfig, vitest, package.json) — verified zero references across all JSON/YAML configs",
-      "Dynamic import() in production code with computed path segments — exhaustive grep found none"
+      "Empty git (no commits in 30 days): shortlog returns empty, committerCount=0, isSolo=true -> solo prompt shown. Correct for new solo project.",
+      "Git not available / not a git repo: error caught, isSolo=false (safe default), falls through to normal C12 block. Correct denial.",
+      "Non-interactive mode (CI, no TTY): confirmOrExit returns false without --yes flag, so solo switch is declined. --yes flag overrides this.",
+      "--approve not yet passed when solo prompt triggers: the flow continues through rest of gatekeep. If --approve not given, the No decision flag check still applies."
     ],
     "errorHandling": true,
     "securityCheck": true,

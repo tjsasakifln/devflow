@@ -1,10 +1,18 @@
 import path from "node:path";
 import { execSync } from "node:child_process";
+import * as readline from "node:readline/promises";
+import { stdin as processStdin, stdout as processStdout } from "node:process";
 import { atomicWrite } from "../utils/fs.js";
 import pc from "picocolors";
 import type { AdversarialVerificationResult } from "../kernel/orchestration/types.js";
+import {
+  runPreFlightCheck,
+  formatToolTable,
+  getBlockedVectorSet,
+  installAllMissing,
+} from "../kernel/checks/tool-verifier.js";
 
-type AttackVerdict = "pass" | "fail" | "inconclusive";
+type AttackVerdict = "pass" | "fail" | "inconclusive" | "skipped";
 
 interface AttackResult {
   verdict: AttackVerdict;
@@ -21,10 +29,18 @@ interface AttackVector {
 interface AdversarialReviewOptions {
   /** When "adversarial", adds multi-agent verification layer on top of deterministic vectors. */
   verifyMode?: "deterministic" | "adversarial";
+  /** Auto-install missing tools via npm install --save-dev. */
+  installMissing?: boolean;
+  /** Skip interactive prompts — automatically skip vectors with missing tools. */
+  nonInteractive?: boolean;
 }
 
 function inconclusive(reason: string): AttackResult {
   return { verdict: "inconclusive", finding: null, reason };
+}
+
+function skipped(reason: string): AttackResult {
+  return { verdict: "skipped", finding: null, reason };
 }
 
 function pass(): AttackResult {
@@ -33,6 +49,22 @@ function pass(): AttackResult {
 
 function fail(finding: string): AttackResult {
   return { verdict: "fail", finding };
+}
+
+/** Prompt the user for a yes/no answer. Returns true for yes. */
+async function promptYesNo(question: string, defaultYes: boolean): Promise<boolean> {
+  const rl = readline.createInterface({
+    input: processStdin,
+    output: processStdout,
+  });
+
+  const suffix = defaultYes ? " [Y/n]" : " [y/N]";
+  const answer = await rl.question(`${question}${suffix} `);
+  rl.close();
+
+  const trimmed = answer.trim().toLowerCase();
+  if (!trimmed) return defaultYes;
+  return trimmed === "y" || trimmed === "yes";
 }
 
 export async function adversarialReview(
@@ -51,10 +83,82 @@ export async function adversarialReview(
     mode = config.executionMode || "local";
   } catch { /* use default */ }
 
+  const isNonInteractive = options?.nonInteractive ?? false;
+  const isInstallMissing = options?.installMissing ?? false;
+
   console.log(pc.bold(`\nDevflow Adversarial Review — ${featureId}`));
   console.log(pc.dim(`Mode: ${mode} | `) + pc.dim("Adversarial review: the reviewer tries to REJECT the feature.\n"));
   console.log(pc.dim("The question is not 'is this good?' but 'why should this be rejected?'\n"));
 
+  // ── Pre-flight tool check ──
+  console.log(pc.bold("── Pre-flight Tool Check ──\n"));
+
+  const preFlight = await runPreFlightCheck(rootPath);
+
+  console.log(formatToolTable(preFlight));
+
+  if (!preFlight.allAvailable) {
+    if (isInstallMissing) {
+      console.log(pc.cyan("\n── Installing Missing Tools ──\n"));
+      const installResults = await installAllMissing(preFlight.missing, rootPath);
+      for (const ir of installResults) {
+        if (ir.success) {
+          console.log(`  ${pc.green("✓")} Installed: ${ir.name}`);
+        } else {
+          console.log(`  ${pc.red("✖")} Failed to install ${ir.name}: ${ir.error}`);
+        }
+      }
+
+      // Re-check after install
+      const postInstallCheck = await runPreFlightCheck(rootPath);
+      if (!postInstallCheck.allAvailable) {
+        console.log(pc.yellow("\n  Some tools still missing after install attempt."));
+        console.log(pc.yellow(`  Install manually: ${postInstallCheck.missing.map(m => m.tool.installHint).join(", ")}`));
+      }
+    } else if (!isNonInteractive) {
+      const blocked = preFlight.blockedVectors.join(", ");
+      console.log(pc.yellow(`\n  ${preFlight.missing.length} tool(s) missing — ${preFlight.blockedVectors.length} vector(s) will be skipped: ${blocked}`));
+      const install = await promptYesNo("  Install missing tools now?", false);
+      if (install) {
+        const installResults = await installAllMissing(preFlight.missing, rootPath);
+        for (const ir of installResults) {
+          if (ir.success) {
+            console.log(`  ${pc.green("✓")} Installed: ${ir.name}`);
+          } else {
+            console.log(`  ${pc.red("✖")} Failed to install ${ir.name}: ${ir.error}`);
+          }
+        }
+
+        // Re-check after install
+        const postInstallCheck = await runPreFlightCheck(rootPath);
+        if (postInstallCheck.allAvailable) {
+          preFlight.tools = postInstallCheck.tools;
+          preFlight.allAvailable = true;
+          preFlight.missing = [];
+          preFlight.blockedVectors = [];
+        } else {
+          const stillMissing = postInstallCheck.missing.map(m => m.tool.displayName).join(", ");
+          console.log(pc.yellow(`\n  Still missing: ${stillMissing}`));
+          console.log(pc.yellow("  Vectors requiring these tools will be skipped."));
+          // Update pre-flight with re-check results
+          preFlight.tools = postInstallCheck.tools;
+          preFlight.missing = postInstallCheck.missing;
+          preFlight.blockedVectors = postInstallCheck.blockedVectors;
+        }
+      } else {
+        console.log(pc.dim("  Vectors requiring missing tools will be skipped."));
+      }
+    } else {
+      console.log(pc.yellow(`\n  ${preFlight.missing.length} tool(s) missing — vectors will be skipped.`));
+    }
+    console.log();
+  } else {
+    console.log(pc.green("\n  All tools available.\n"));
+  }
+
+  const blockedVectorNames = getBlockedVectorSet(preFlight);
+
+  // ── Attack vectors ──
   const attackVectors: AttackVector[] = [];
 
   // ── Attack 1: Hidden coupling ──
@@ -70,8 +174,8 @@ export async function adversarialReview(
         const result = JSON.parse(output);
         const violations = result.summary?.totalCruised > 0 ? (result.summary?.totalViolations || 0) : 0;
         return violations > 0 ? fail(`Found ${violations} dependency violations`) : pass();
-      } catch {
-        return inconclusive("dependency-cruiser not available — cannot verify hidden coupling");
+      } catch (err) {
+        return inconclusive(`Tool error: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   });
@@ -90,8 +194,8 @@ export async function adversarialReview(
           return fail(`Test cases without assertions found — decorative tests:\n${output.slice(0, 300)}`);
         }
         return pass();
-      } catch {
-        return inconclusive("grep not available — cannot verify test assertions");
+      } catch (err) {
+        return inconclusive(`Tool error: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   });
@@ -110,8 +214,8 @@ export async function adversarialReview(
           return fail(`Direct instantiation in potentially wrong layer:\n${output.slice(0, 300)}`);
         }
         return pass();
-      } catch {
-        return inconclusive("grep not available — cannot verify abstraction failures");
+      } catch (err) {
+        return inconclusive(`Tool error: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   });
@@ -130,8 +234,8 @@ export async function adversarialReview(
           return fail(`Domain imports infrastructure:\n${output.slice(0, 300)}`);
         }
         return pass();
-      } catch {
-        return inconclusive("grep not available — cannot verify layer violations");
+      } catch (err) {
+        return inconclusive(`Tool error: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   });
@@ -150,8 +254,8 @@ export async function adversarialReview(
           return fail(`Potential security issue (eval or sensitive env access):\n${output.slice(0, 300)}`);
         }
         return pass();
-      } catch {
-        return inconclusive("grep not available — cannot verify security patterns");
+      } catch (err) {
+        return inconclusive(`Tool error: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   });
@@ -186,8 +290,8 @@ export async function adversarialReview(
           return fail(`${uniqueRFs.length - foundCount}/${uniqueRFs.length} functional requirements not referenced in code or test-plan`);
         }
         return pass();
-      } catch {
-        return inconclusive("Could not verify spec-code gap — file access error");
+      } catch (err) {
+        return inconclusive(`File access error: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   });
@@ -221,8 +325,8 @@ export async function adversarialReview(
           }
         }
         return pass();
-      } catch {
-        return inconclusive("Could not verify requirement coverage — file access error");
+      } catch (err) {
+        return inconclusive(`File access error: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   });
@@ -241,8 +345,8 @@ export async function adversarialReview(
           return fail(`Code duplication detected:\n${output.slice(0, 300)}`);
         }
         return pass();
-      } catch {
-        return inconclusive("jscpd not available — cannot check code duplication");
+      } catch (err) {
+        return inconclusive(`Tool error: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   });
@@ -262,8 +366,8 @@ export async function adversarialReview(
           return fail("state.json exists but no gatekeep-log.jsonl found — potential manual state manipulation");
         }
         return pass();
-      } catch {
-        return inconclusive("Could not verify state tampering — file access error");
+      } catch (err) {
+        return inconclusive(`File access error: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   });
@@ -292,8 +396,8 @@ export async function adversarialReview(
           return fail(`Log forgery detected:\n${invalidLines.slice(0, 5).join("\n")}`);
         }
         return pass();
-      } catch {
-        return inconclusive("Could not verify log integrity");
+      } catch (err) {
+        return inconclusive(`File access error: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   });
@@ -319,8 +423,8 @@ export async function adversarialReview(
           return fail(`${completedActions} actions completed but only ${logEntries} log entries — possible false completion`);
         }
         return pass();
-      } catch {
-        return inconclusive("Could not verify action completion integrity");
+      } catch (err) {
+        return inconclusive(`File access error: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   });
@@ -355,8 +459,8 @@ export async function adversarialReview(
           }
         }
         return pass();
-      } catch {
-        return inconclusive("Could not verify actor uniqueness");
+      } catch (err) {
+        return inconclusive(`File access error: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
   });
@@ -365,8 +469,18 @@ export async function adversarialReview(
   const results: Array<{ attack: AttackVector; result: AttackResult }> = [];
   let failCount = 0;
   let inconclusiveCount = 0;
+  let skippedCount = 0;
 
   for (const attack of attackVectors) {
+    // Skip vectors whose required tools are missing
+    if (blockedVectorNames.has(attack.name)) {
+      console.log(`  ⏭️ ${pc.bold(attack.name)}: ${attack.question}`);
+      console.log(`    ${pc.dim("⏭️")} SKIPPED (tool not installed)`);
+      results.push({ attack, result: skipped(`${attack.name} requires a tool that is not installed`) });
+      skippedCount++;
+      continue;
+    }
+
     console.log(`  🔍 ${pc.bold(attack.name)}: ${attack.question}`);
     const result = attack.check();
     results.push({ attack, result });
@@ -512,9 +626,12 @@ export async function adversarialReview(
 
   const verdictColor = overallVerdict === "PASS" ? pc.green : overallVerdict === "FAIL" ? pc.red : pc.yellow;
   console.log(pc.bold(`\nAdversarial Review Verdict: ${verdictColor(overallVerdict)}`));
-  console.log(pc.dim(`  Pass: ${attackVectors.length - failCount - inconclusiveCount} | Fail: ${failCount} | Inconclusive: ${inconclusiveCount}`));
+  console.log(pc.dim(`  Pass: ${attackVectors.length - failCount - inconclusiveCount - skippedCount} | Fail: ${failCount} | Inconclusive: ${inconclusiveCount} | Skipped: ${skippedCount}`));
   if (strictMode && overallVerdict === "INCONCLUSIVE") {
     console.log(pc.yellow(`  Mode '${mode}' requires all vectors verifiable. Inconclusive results block.\n`));
+  }
+  if (skippedCount > 0) {
+    console.log(pc.dim(`  ${skippedCount} vector(s) skipped due to missing tools. Re-run after installing to get full results.\n`));
   }
   console.log();
 
@@ -541,8 +658,8 @@ ${options?.verifyMode === "adversarial" ? `> **Verify Mode:** Multi-Agent Advers
 ## Attack Vectors Checked
 
 ${results.map(({ attack, result }) => {
-  const icon = result.verdict === "pass" ? "✓" : result.verdict === "fail" ? "✖" : "?";
-  const detail = result.verdict === "fail" ? `\n  - Finding: ${result.finding}` : result.verdict === "inconclusive" ? `\n  - Reason: ${result.reason}` : "";
+  const icon = result.verdict === "pass" ? "✓" : result.verdict === "fail" ? "✖" : result.verdict === "skipped" ? "⏭️" : "?";
+  const detail = result.verdict === "fail" ? `\n  - Finding: ${result.finding}` : result.verdict === "inconclusive" ? `\n  - Reason: ${result.reason}` : result.verdict === "skipped" ? `\n  - Skipped: ${result.reason}` : "";
   return `- ${icon} **${attack.name}**: ${attack.question}${detail}`;
 }).join("\n")}
 

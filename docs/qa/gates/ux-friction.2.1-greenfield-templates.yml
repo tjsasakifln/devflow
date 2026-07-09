@@ -1,0 +1,25 @@
+schema: 1
+story: 'ux-friction.2.1'
+gate: CONCERNS
+status_reason: 'Templates e validadores existem e estão funcionalmente corretos, mas a geração interativa de conteúdo em feature new nao respeita a variante de template detectada, sempre gerando conteudo brownfield. Gap de cobertura de testes para as novas funcoes variant-aware.'
+reviewer: 'Quinn'
+updated: '2026-07-08T21:15:00Z'
+top_issues:
+  - id: 'REQ-001'
+    severity: high
+    finding: 'generatePrefilledRequirements() em feature.ts sempre gera requisicoes estilo brownfield (15 secoes com Invariantes de Dominio, Casos Extremos, etc.) independentemente do project type detectado. A variante detectada so afeta o rotulo de exibicao, nao o conteudo gerado.'
+    suggested_action: 'Tornar generatePrefilledRequirements() variant-aware: pular secoes de legado/delta para greenfield (ex: Invariantes de Dominio, Casos Extremos, Restricoes Tecnicas, Escopo Negativo, Riscos de Manutencao).'
+  - id: 'REQ-002'
+    severity: high
+    finding: 'requirements-template.greenfield.md tem 9 secoes (AC 1 especifica 10). O template nao inclui uma secao de Entradas/Saidas que o validador greenfield espera.'
+    suggested_action: 'Alinhar o template greenfield com as 10 secoes do validador, ou ajustar a contagem de secoes na AC da story.'
+  - id: 'TEST-001'
+    severity: medium
+    finding: 'Nenhum teste unitario para detectProjectType(), validateRequirementsVariant() ou validateRoadmapVariant(). As funcoes de validacao variant-aware nao tem cobertura de testes (exempted por YOLO mode, mas gap documentado).'
+    suggested_action: 'Adicionar testes unitarios para as funcoes variant-aware do validador e para detectProjectType().'
+  - id: 'MNT-001'
+    severity: low
+    finding: 'Os nomes de secoes nos templates (templates/) e os nomes de secoes nos validadores (structural.ts) sao completamente diferentes. Templates usam "Resumo executivo" enquanto validadores esperam "Descricao Funcional". Se um usuario preencher o template manualmente, o validador nao reconhecera as secoes.'
+    suggested_action: 'Documentar que os templates em templates/ sao referencias humanas e nao validaveis por codigo, ou alinhar os nomes de secoes entre templates e validadores.'
+waiver:
+  active: false

@@ -214,8 +214,13 @@ export function registerCommands(program: Command): void {
   program
     .command("adversarial-review <featureId>")
     .description(`Adversarial review — attempt to reject the feature across ${ADVERSARIAL_VECTOR_COUNT} attack vectors`)
-    .action(async (featureId: string) => {
-      await adversarialReview(featureId, process.cwd());
+    .option("--install-missing", "Auto-install missing tools via npm install --save-dev")
+    .option("--non-interactive", "Skip prompts, automatically skip vectors with missing tools")
+    .action(async (featureId: string, opts: { installMissing?: boolean; nonInteractive?: boolean }) => {
+      await adversarialReview(featureId, process.cwd(), {
+        installMissing: opts.installMissing ?? false,
+        nonInteractive: opts.nonInteractive ?? false,
+      });
     });
 
   // review-pr
