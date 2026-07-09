@@ -349,6 +349,8 @@ export async function traceCommand(
       },
     };
 
+    console.error(pc.bold("\nDevflow Execution Trace\n"));
+    console.error(pc.dim("═".repeat(55)));
     console.error(pc.yellow("\n⚠ No trace data found.\n"));
     console.error(pc.dim("  Devflow generates trace data when you run:\n"));
     console.error(pc.dim("    - devflow gatekeep         → gatekeep-log.jsonl"));

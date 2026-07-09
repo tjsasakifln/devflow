@@ -194,7 +194,7 @@ export async function adversarialReviewAI(
     };
 
     try {
-      await adversarialReview(featureId, rootPath);
+      await adversarialReview(featureId, rootPath, { nonInteractive: true });
     } finally {
       console.log = originalLog;
     }
@@ -229,7 +229,7 @@ export async function adversarialReviewAI(
     };
 
     try {
-      await adversarialReview(featureId, rootPath);
+      await adversarialReview(featureId, rootPath, { nonInteractive: true });
     } finally {
       console.log = originalLog;
     }
