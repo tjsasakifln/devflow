@@ -7,6 +7,8 @@
  */
 
 /** Number of attack vectors in the adversarial review (Phase 1: was 8, now 12). */
+export * from "./constants/paths.js";
+
 export const ADVERSARIAL_VECTOR_COUNT = 12;
 
 /** Number of Definition of Done checks run by `feature complete`. */

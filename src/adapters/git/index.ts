@@ -8,6 +8,7 @@
 import { runProcess } from "../process/safe-runner.js";
 import { stat, appendFile, readFile, mkdir } from "node:fs/promises";
 import path from "node:path";
+import { HOOK_BYPASS_LOG_RELPATH } from "../../kernel/constants/paths.js";
 
 // ── Types ──
 
@@ -166,8 +167,6 @@ export async function getWorkingTreeStatus(
 
 // ── Hook Bypass Logging ──
 
-const HOOK_BYPASS_LOG = ".devflow/audits/hook-bypass.jsonl";
-
 /**
  * Log a git hook bypass event to `.devflow/audits/hook-bypass.jsonl`.
  *
@@ -179,7 +178,7 @@ export async function logHookBypass(
   hook: string,
   reason: string,
 ): Promise<void> {
-  const logPath = path.join(cwd, HOOK_BYPASS_LOG);
+  const logPath = path.join(cwd, HOOK_BYPASS_LOG_RELPATH);
 
   try {
     await mkdir(path.dirname(logPath), { recursive: true });
@@ -218,7 +217,7 @@ export async function getHookBypasses(
   cwd: string,
   since?: string,
 ): Promise<HookBypass[]> {
-  const logPath = path.join(cwd, HOOK_BYPASS_LOG);
+  const logPath = path.join(cwd, HOOK_BYPASS_LOG_RELPATH);
   const bypasses: HookBypass[] = [];
 
   try {

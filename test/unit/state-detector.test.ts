@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { inspectProject } from "../../src/project/inspector.js";
+import { inspectProject } from "../../src/adapters/project/inspector.js";
 import {
   detectState,
   determineFeatureState,
-} from "../../src/engine/state-detector.js";
-import type { FeatureInfo } from "../../src/types/project.js";
+} from "../../src/kernel/state/detector.js";
+import type { FeatureInfo } from "../../src/kernel/types/project.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixtures = path.join(__dirname, "..", "fixtures");

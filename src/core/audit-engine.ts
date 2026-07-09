@@ -16,6 +16,7 @@ import { fileExists, safeReadFile } from "../kernel/utils/fs.js";
 import { getVersion } from "../kernel/utils/version.js";
 import { getStackAdapter, detectStackFromFiles } from "../adapters/stacks/index.js";
 import type { StackAdapter } from "../adapters/stacks/types.js";
+import { FEATURES_DIR, AUDITS_DIR, ADVERSARIAL_REVIEW_FILENAME, GATEKEEP_LOG_RELPATH } from "../kernel/constants/paths.js";
 import {
   type AuditReport,
   type AuditOptions,
@@ -157,7 +158,7 @@ async function detectFeature(cwd: string, tolerance: "relaxed" | "moderate" | "s
       featureId = active.featureId ?? null;
 
       if (featureId) {
-        const featureDir = path.join(cwd, "_devflow", "features", featureId);
+        const featureDir = path.join(cwd, FEATURES_DIR, featureId);
 
         // Check core artifacts
         const coreArtifacts = [
@@ -174,7 +175,7 @@ async function detectFeature(cwd: string, tolerance: "relaxed" | "moderate" | "s
               type: "artifact",
               label: a.label,
               present: true,
-              detail: `_devflow/features/${featureId}/${a.file}`,
+              detail: `${FEATURES_DIR}/${featureId}/${a.file}`,
             });
           } else {
             artifactRisks.push(createRisk(
@@ -215,7 +216,7 @@ async function detectFeature(cwd: string, tolerance: "relaxed" | "moderate" | "s
         }
 
         // Adversarial review
-        const arPath = path.join(cwd, ".devflow", "audits", featureId, "adversarial-review.md");
+        const arPath = path.join(cwd, AUDITS_DIR, featureId, ADVERSARIAL_REVIEW_FILENAME);
         arExists = await fileExists(arPath);
         if (arExists) {
           const arContent = await safeReadFile(arPath);
@@ -236,7 +237,7 @@ async function detectFeature(cwd: string, tolerance: "relaxed" | "moderate" | "s
         }
 
         // Gatekeep
-        const gkPath = path.join(cwd, ".devflow", "audits", "gatekeep-log.jsonl");
+        const gkPath = path.join(cwd, GATEKEEP_LOG_RELPATH);
         if (await fileExists(gkPath)) {
           const gkContent = await safeReadFile(gkPath);
           if (gkContent) {
@@ -293,7 +294,7 @@ export async function runAudit(opts: AuditOptions): Promise<AuditReport> {
   // Load execution mode from config
   let execMode: "local" | "experimental" | "strict" | "release" = "local";
   try {
-    const { ConfigManager } = await import("../config/index.js");
+    const { ConfigManager } = await import("../kernel/config/index.js");
     const cfgMgr = new ConfigManager(cwd);
     const cfg = await cfgMgr.load();
     execMode = cfg.executionMode ?? "local";

@@ -12,6 +12,7 @@
 import path from "node:path";
 import pc from "picocolors";
 import { safeReadFile, fileExists } from "../kernel/utils/fs.js";
+import { AUDITS_DIR, GATEKEEP_LOG_RELPATH, DOT_DEVFLOW_DIR } from "../kernel/constants/paths.js";
 
 interface TraceEntry {
   timestamp: string;
@@ -72,7 +73,7 @@ function relativeTime(ts1: string, ts2: string): string {
 }
 
 async function readGatekeepLog(rootPath: string): Promise<TraceEntry[]> {
-  const logPath = path.join(rootPath, ".devflow", "audits", "gatekeep-log.jsonl");
+  const logPath = path.join(rootPath, GATEKEEP_LOG_RELPATH);
   const raw = await safeReadFile(logPath);
   if (!raw) return [];
 
@@ -98,7 +99,7 @@ async function readGatekeepLog(rootPath: string): Promise<TraceEntry[]> {
 }
 
 async function readImplementationLogs(rootPath: string): Promise<TraceEntry[]> {
-  const logsDir = path.join(rootPath, ".devflow", "features");
+  const logsDir = path.join(rootPath, DOT_DEVFLOW_DIR, "features");
   const entries: TraceEntry[] = [];
 
   // Try to read from _devflow/features/ directory
@@ -140,7 +141,7 @@ async function readImplementationLogs(rootPath: string): Promise<TraceEntry[]> {
 }
 
 async function readAdversarialReviews(rootPath: string): Promise<TraceEntry[]> {
-  const auditsDir = path.join(rootPath, ".devflow", "audits");
+  const auditsDir = path.join(rootPath, AUDITS_DIR);
   const entries: TraceEntry[] = [];
 
   try {

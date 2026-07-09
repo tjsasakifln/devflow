@@ -1,0 +1,20 @@
+schema: 1
+story: '3.3'
+gate: CONCERNS
+status_reason: '8 of 14 planned test files created (84 tests): git adapters (diff-model 17, exclusion-rules 8, index 35), model adapters (anthropic 4, index 5, ollama 2, openai 3), process (safe-runner 14). AC1-3, AC7-8 met. But AC4 (project adapters), AC5 (integration adapters), AC6 (crew/runner) test files not found on main branch.'
+reviewer: 'Quinn (Guardian)'
+updated: '2026-07-09T02:50:00Z'
+top_issues:
+  - id: TEST-001
+    severity: medium
+    finding: 'Project adapter tests (feature-detector, file-scanner, git-inspector) not found — AC4 not met'
+    suggested_action: 'Create test files for project adapters or adjust scope'
+  - id: TEST-002
+    severity: medium
+    finding: 'Integration adapter tests (claude-code, claude-commands) not found — AC5 not met'
+    suggested_action: 'Create test files for integration adapters or adjust scope'
+  - id: TEST-003
+    severity: medium
+    finding: 'Crew runner tests not found — AC6 not met'
+    suggested_action: 'Create test files for crew/runner or adjust scope'
+waiver: { active: false }

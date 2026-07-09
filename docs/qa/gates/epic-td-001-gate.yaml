@@ -1,0 +1,74 @@
+schema: 1
+story: EPIC-TD-001
+gate: CONCERNS
+status_reason: 'Wave 2 (Stories 2.1-2.9) reassessed. Story 2.5 (logger) PASS verified. Stories 2.2, 2.7, 2.8 CONCERNS with documented issues. Stories 2.3, 2.4, 2.9 FAIL — no deliverables exist on disk. Story 2.6 FAIL — --strict flag not present in committed code (previously claimed as verified by earlier gate, but source and CLI both lack --strict implementation). 5 of 9 story files missing from docs/stories/. 67 test files, 1075 tests all passing. TypeScript 0 errors.'
+reviewer: 'Quinn (Guardian)'
+updated: '2026-07-08T23:55:00Z'
+
+top_issues:
+  - id: REQ-001
+    severity: high
+    finding: 'Stories 2.3 (ADR), 2.4 (Documentation gaps), 2.9 (Workflow schema) have NO deliverables on disk — no story files, no implementation artifacts. docs/architecture/project-decisions/, docs/framework/, docs/reference/ directories do not exist. docs/prd/ not sharded. Cannot validate ACs.'
+    suggested_action: 'Create missing story files or document explicit deferral of these stories. For story 2.3, create docs/architecture/project-decisions/template.md with MADR template and 3 retrospective ADRs. For story 2.4, create docs/framework/ with 3 docs, shard PRD to docs/prd/, create 3 extension guides. For story 2.9, create docs/reference/workflow-schema.json with JSON Schema and validation script.'
+
+  - id: REQ-002
+    severity: high
+    finding: 'Story 2.6 (silent fallback) AC3 FAIL: --strict flag NOT present in committed source code (src/commands/adversarial-review-ai.ts). Function signature is `adversarialReviewAI(featureId, rootPath)` with no options parameter. CLI definition at src/cli/index.ts:465-468 has no --strict option. Strict logic exists in git stash but NOT committed. Previous gate incorrectly claimed AC3 as verified.'
+    suggested_action: 'Apply stashed changes (stash@{0}) to reinstate --strict flag and logger migration. Commit to feature branch. Also add --strict option to CLI command definition at src/cli/index.ts:465.'
+
+  - id: REQ-003
+    severity: medium
+    finding: 'Story 2.6 AC5 FAIL: test/unit/adversarial-review-ai.test.ts not found. 6 tests claimed in story but no file on disk.'
+    suggested_action: 'Create adversarial-review-ai.test.ts with 6 test cases covering fallback warning output and --strict mode error behavior.'
+
+  - id: MNT-001
+    severity: medium
+    finding: 'Story 2.2 AC4 (CI integration): .github/workflows/ci.yml has no lint step. Issue persists from previous gate. No pre-commit hook alternative found.'
+    suggested_action: 'Add non-blocking lint step to CI workflow with continue-on-error: true as documented in story scope, or configure pre-commit hook.'
+
+  - id: DOC-001
+    severity: medium
+    finding: 'Story 2.8 AC2 FAIL: docs/guides/adversarial-review.md not found. Pre-requisites documentation missing. Issue persists from previous gate.'
+    suggested_action: 'Create adversarial-review.md guide with multi-agent pre-requisites (API keys, agent definitions, MCP configuration) per story scope.'
+
+  - id: DOC-002
+    severity: medium
+    finding: 'Story 2.8 AC4 partial: No --experimental flag wired to adversarial-review CLI command. Global --mode experimental exists but command-specific flag not implemented.'
+    suggested_action: 'Add --experimental option to adversarial-review command definition at src/cli/index.ts:307-314, or document that --mode experimental satisfies this requirement.'
+
+  - id: TEST-001
+    severity: medium
+    finding: 'Story 2.7 (rate limiting) has no dedicated test file for retry.ts. Module is mocked in adapter tests (anthropic, openai, ollama) but exponential backoff, 429 handling, and timeout logic untested.'
+    suggested_action: 'Add test/unit/retry.test.ts with tests for exponential backoff calculation, 429 retry, timeout detection, and non-retryable 4xx pass-through.'
+
+  - id: REQ-004
+    severity: low
+    finding: '5 of 9 Wave 2 story files missing from docs/stories/: story-2.1-fix-test-runner-timeout.md, story-2.3-establish-adr-process.md, story-2.4-fix-documentation-gaps.md, story-2.7-add-rate-limiting-ai-adapters.md, story-2.9-document-workflow-yaml-schema.md. Cannot validate ACs without story definitions, but implementation artifacts exist for some (vitest timeout config, retry.ts).'
+    suggested_action: 'Recreate missing story files from implementation artifacts, or acknowledge stories as undocumented-but-implemented in the epic tracker.'
+
+waiver: { active: false }
+
+wave_assessment:
+  wave_2:
+    name: 'Wave 2 — Quality Infrastructure (Stories 2.1-2.9)'
+    stories_total: 9
+    stories_on_disk: 4
+    verdict: CONCERNS
+    summary: >
+      Story 2.5 (logger abstraction) fully verified PASS. Story 2.1 (test timeout) verified PASS
+      via vitest.config.ts and CLI timeout configuration. Story 2.2 (linter) CONCERNS: eslint.config.js
+      correct, lint script exists, but CI lint step still missing (AC4). Story 2.7 (rate limiting)
+      CONCERNS: retry.ts implementation complete but no story file or tests.
+
+      CRITICAL NEW FINDING: Story 2.6 (adversarial fallback) downgraded to FAIL. --strict flag
+      NOT in committed code. Previous gate incorrectly claimed AC3 verified. The implementation
+      exists in stash but was never committed. Function signature has no options parameter.
+      CLI definition has no --strict option. No test file found.
+
+      Story 2.8 (adversarial docs) CONCERNS: pre-flight check verified, but adversarial-review.md
+      guide missing (AC2), --experimental flag not wired to CLI command (AC4 partial).
+
+      Stories 2.3 (ADR), 2.4 (documentation gaps), 2.9 (workflow schema) FAIL: no deliverables
+      exist on disk. These stories need either implementation or explicit deferral.
+    build: '0 TypeScript errors'
+    tests: '67 files, 1075 tests, 0 failures'

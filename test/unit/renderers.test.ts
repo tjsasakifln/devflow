@@ -68,7 +68,7 @@ describe("Markdown Renderer", () => {
     expect(severityEmoji("CRITICAL")).toBe("🔴");
     expect(severityEmoji("HIGH")).toBe("🟠");
     expect(severityEmoji("MEDIUM")).toBe("🟡");
-    expect(severityEmoji("LOW")).toBe("🔵");
+    expect(severityEmoji("LOW")).toBe("⚪");
   });
 
   it("should include gates checklist", () => {

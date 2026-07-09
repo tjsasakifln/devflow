@@ -46,7 +46,7 @@ function validateEnvironment(input: string): Environment | null {
 
 async function checkCIGreen(rootPath: string): Promise<GateResult> {
   try {
-    const { ConfigManager } = await import("../config/index.js");
+    const { ConfigManager } = await import("../kernel/config/index.js");
     const configMgr = new ConfigManager(rootPath);
     const config = await configMgr.load();
 

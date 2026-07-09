@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { computeRecommendation } from "../../src/engine/next-action.js";
-import type { StateDetectionResult } from "../../src/types/state.js";
-import type { ProjectInspection } from "../../src/types/project.js";
+import { computeRecommendation } from "../../src/kernel/actions/recommender.js";
+import type { StateDetectionResult } from "../../src/kernel/types/state.js";
+import type { ProjectInspection } from "../../src/kernel/types/project.js";
 
 function makeStateResult(
   state: StateDetectionResult["currentState"]

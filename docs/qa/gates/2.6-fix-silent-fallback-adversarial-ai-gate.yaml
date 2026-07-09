@@ -1,0 +1,16 @@
+schema: 1
+story: '2.6'
+gate: FAIL
+status_reason: 'CRITICAL: --strict flag NOT present in committed code (AC3). Function signature adversarialReviewAI(featureId, rootPath) has no options parameter. CLI definition at src/cli/index.ts:465-468 has no --strict option. Strict logic exists in git stash but never committed. No test file found (AC5). Previous gate incorrectly claimed AC3 verified. Only AC1 (fallback warning) and AC2 (warning visible in stdout) are met. Build and tests pass.'
+reviewer: 'Quinn (Guardian)'
+updated: '2026-07-08T23:55:00Z'
+top_issues:
+  - id: REQ-002
+    severity: high
+    finding: '--strict flag not present in committed source code. Function signature: adversarialReviewAI(featureId: string, rootPath: string): Promise<void>. No options parameter. Strict logic exists in git stash (stash@{0}) with logger integration but never committed. Also no --strict CLI option.'
+    suggested_action: 'Apply stashed changes: git stash pop (stash@{0}). Verify adversarial-review-ai.ts has options?: { strict?: boolean } parameter. Add --strict option to CLI command definition.'
+  - id: TEST-001
+    severity: medium
+    finding: 'test/unit/adversarial-review-ai.test.ts not found. 6 tests claimed in story but no file on disk.'
+    suggested_action: 'Create adversarial-review-ai.test.ts with 6 test cases: fallback warning on AI unavailable, --strict error on AI unavailable, normal operation with AI, fallback on AI review failure, --strict on AI review failure, warning visible in stdout.'
+waiver: { active: false }

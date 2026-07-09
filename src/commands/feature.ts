@@ -1,15 +1,15 @@
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { ArtifactManager } from "../kernel/artifacts/manager.js";
-import { inspectProject } from "../project/inspector.js";
-import { fileExists, listDir } from "../utils/fs.js";
+import { inspectProject } from "../adapters/project/inspector.js";
+import { fileExists, listDir } from "../kernel/utils/fs.js";
 import {
   isInteractive,
   requiredTextInput,
   optionalTextInput,
   spinnerWhile,
   confirmOrExit,
-} from "../utils/prompts.js";
+} from "../kernel/utils/prompts.js";
 import { detectProjectType } from "../kernel/detection/project-type.js";
 import type { ProjectType } from "../kernel/detection/project-type.js";
 import pc from "picocolors";
@@ -180,8 +180,8 @@ export async function featureNewCommand(
 
   // Regenerate cockpit
   const inspection = await inspectProject(rootPath);
-  const { detectState } = await import("../engine/state-detector.js");
-  const { computeRecommendation } = await import("../engine/next-action.js");
+  const { detectState } = await import("../kernel/state/detector.js");
+  const { computeRecommendation } = await import("../kernel/actions/recommender.js");
   const { generateCockpit } = await import("../kernel/cockpit/generator.js");
 
   const stateResult = await detectState(inspection);

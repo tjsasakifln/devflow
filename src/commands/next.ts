@@ -1,8 +1,8 @@
 import path from "node:path";
-import { inspectProject } from "../project/inspector.js";
-import { detectState } from "../engine/state-detector.js";
-import { computeRecommendation } from "../engine/next-action.js";
-import { fileExists } from "../utils/fs.js";
+import { inspectProject } from "../adapters/project/inspector.js";
+import { detectState } from "../kernel/state/detector.js";
+import { computeRecommendation } from "../kernel/actions/recommender.js";
+import { fileExists } from "../kernel/utils/fs.js";
 import { WorkflowEngine } from "../kernel/workflow/engine.js";
 import { ParallelSpawner } from "../kernel/orchestration/parallel-spawner.js";
 import { resolveDimensions } from "../kernel/orchestration/dimensions.js";

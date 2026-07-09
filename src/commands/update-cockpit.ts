@@ -1,10 +1,10 @@
 import path from "node:path";
 import { ArtifactManager } from "../kernel/artifacts/manager.js";
-import { inspectProject } from "../project/inspector.js";
-import { detectState } from "../engine/state-detector.js";
-import { computeRecommendation } from "../engine/next-action.js";
+import { inspectProject } from "../adapters/project/inspector.js";
+import { detectState } from "../kernel/state/detector.js";
+import { computeRecommendation } from "../kernel/actions/recommender.js";
 import { generateCockpit } from "../kernel/cockpit/generator.js";
-import { fileExists } from "../utils/fs.js";
+import { fileExists } from "../kernel/utils/fs.js";
 import pc from "picocolors";
 
 export async function updateCockpitCommand(cwd: string): Promise<void> {

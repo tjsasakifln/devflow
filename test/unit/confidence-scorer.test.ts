@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { scoreConfidence } from "../../src/engine/confidence-scorer.js";
-import type { Evidence, DevflowState } from "../../src/types/state.js";
+import { scoreConfidence } from "../../src/kernel/evidence/confidence.js";
+import type { Evidence, DevflowState } from "../../src/kernel/types/state.js";
 
 describe("Confidence Scorer", () => {
   it("returns high when all high-confidence evidence supports state", () => {

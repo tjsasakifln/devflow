@@ -1,0 +1,8 @@
+schema: 1
+story: '3.1'
+gate: PASS
+status_reason: 'All 7 ACs met. 4 test files created at test/kernel/discovery/ (archaeologist, detective, architect, writer). Fixtures at test/kernel/discovery/fixtures/mock-reports.ts. Tests execute without timeout. npm test passes with 1075 tests total. Code coverage targets >70% per module.'
+reviewer: 'Quinn (Guardian)'
+updated: '2026-07-09T02:50:00Z'
+top_issues: []
+waiver: { active: false }

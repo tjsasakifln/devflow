@@ -1,0 +1,12 @@
+schema: 1
+story: '2.2'
+gate: CONCERNS
+status_reason: 'eslint.config.js confirmed with @typescript-eslint/recommended rules and no-console: warn. npm run lint script in package.json verified (1069 problems: 60 errors, 1009 warnings). CI workflow at .github/workflows/ci.yml has no lint step (AC4). No pre-commit hook found. Core tooling solid but integration point still missing.'
+reviewer: 'Quinn (Guardian)'
+updated: '2026-07-08T23:55:00Z'
+top_issues:
+  - id: MNT-001
+    severity: medium
+    finding: 'CI workflow at .github/workflows/ci.yml has no lint step. No pre-commit hook alternative found.'
+    suggested_action: 'Add non-blocking lint step to CI workflow with continue-on-error: true as planned until D-SYS-12. Or configure pre-commit hook with lint-staged.'
+waiver: { active: false }

@@ -1,13 +1,13 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import { ArtifactManager } from "../kernel/artifacts/manager.js";
-import { ConfigManager } from "../config/index.js";
-import { inspectProject } from "../project/inspector.js";
-import { detectState } from "../engine/state-detector.js";
-import { computeRecommendation } from "../engine/next-action.js";
+import { ConfigManager } from "../kernel/config/index.js";
+import { inspectProject } from "../adapters/project/inspector.js";
+import { detectState } from "../kernel/state/detector.js";
+import { computeRecommendation } from "../kernel/actions/recommender.js";
 import { generateCockpit } from "../kernel/cockpit/generator.js";
-import { ensureClaudeMdSection } from "../integration/claude-code.js";
-import { fileExists } from "../utils/fs.js";
+import { ensureClaudeMdSection } from "../adapters/integration/claude-code.js";
+import { fileExists } from "../kernel/utils/fs.js";
 import { resolveInvocationCommand } from "../kernel/utils/cli-resolver.js";
 import pc from "picocolors";
 
@@ -117,7 +117,7 @@ export async function initCommand(cwd: string): Promise<void> {
   // Validate Devflow skill generation (in-memory)
   try {
     const { generateDevflowSkill } = await import(
-      "../integration/claude-code.js"
+      "../adapters/integration/claude-code.js"
     );
     const skillContent = generateDevflowSkill();
     // Verify it's non-empty markdown with frontmatter
@@ -229,12 +229,12 @@ export async function initCommand(cwd: string): Promise<void> {
 
     // Step 7: Generate .claude/skills/devflow/SKILL.md
     console.log(pc.blue("→") + " Installing Claude Code skill: .claude/skills/devflow/SKILL.md");
-    const { ensureDir } = await import("../utils/fs.js");
+    const { ensureDir } = await import("../kernel/utils/fs.js");
     await ensureDir(planned.skillDir);
     createdPaths.push(planned.skillDir);
 
     const { generateDevflowSkill } = await import(
-      "../integration/claude-code.js"
+      "../adapters/integration/claude-code.js"
     );
     const skillContent = generateDevflowSkill();
     await manager.safeWrite(

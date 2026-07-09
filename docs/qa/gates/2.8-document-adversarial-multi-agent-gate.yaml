@@ -1,0 +1,16 @@
+schema: 1
+story: '2.8'
+gate: CONCERNS
+status_reason: 'Pre-flight check (runPreFlightCheck) verified in adversarial-review.ts and tool-verifier.ts. --experimental flag not wired to adversarial-review CLI command (AC4 partial: global --mode experimental exists but command-specific flag absent). docs/guides/adversarial-review.md not found (AC2). adversarial-verify.test.ts exists with 166 tests, 752 lines. --help for adversarial command has --verify-mode but no --experimental.'
+reviewer: 'Quinn (Guardian)'
+updated: '2026-07-08T23:55:00Z'
+top_issues:
+  - id: DOC-001
+    severity: medium
+    finding: 'docs/guides/adversarial-review.md not found — required by AC2 for documenting pre-requisites (API keys, agent definitions, MCP configuration).'
+    suggested_action: 'Create adversarial-review.md guide with multi-agent pre-requisites per story scope.'
+  - id: REQ-003
+    severity: medium
+    finding: 'No --experimental flag on adversarial-review CLI command. Global --mode experimental exists but is not specific to the adversarial command.'
+    suggested_action: 'Add --experimental option to adversarial-review command at src/cli/index.ts or document that --mode experimental satisfies this requirement.'
+waiver: { active: false }

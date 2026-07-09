@@ -81,7 +81,7 @@ export function registerCommands(program: Command): void {
     .command("set <key> <value>")
     .description("Set a configuration value (e.g., reviewMode solo-hardened)")
     .action(async (key: string, value: string) => {
-      const { ConfigManager } = await import("../config/index.js");
+      const { ConfigManager } = await import("../kernel/config/index.js");
       const mgr = new ConfigManager(process.cwd());
       const config = await mgr.load();
 

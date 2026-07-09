@@ -1,0 +1,8 @@
+schema: 1
+story: '2.5'
+gate: PASS
+status_reason: 'All 9 ACs confirmed. src/kernel/utils/logger.ts implements Logger class with debug/info/warn/error levels, JSON format via LOG_FORMAT=json, quiet mode via LOG_QUIET=true, configurable timestamps and source. test/unit/logger.test.ts has 21 tests. Imported by 7+ source files across adapters, commands, kernel. Remaining console.* calls in cli/ and commands/ are intentional CLI output (pipe-safe JSON, user-facing messages) per scope: "Nao altera formato de saida externa dos comandos CLI." npm test (1075 pass) and npm run typecheck (0 errors) pass.'
+reviewer: 'Quinn (Guardian)'
+updated: '2026-07-08T23:55:00Z'
+top_issues: []
+waiver: { active: false }

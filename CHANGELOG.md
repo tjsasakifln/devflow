@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.2.0] — 2026-07-09 — EPIC-TD-001 — Technical Debt Resolution (22 stories)
+
+### Epic: Technical Debt (EPIC-TD-001)
+
+#### Structural Cleanup (Stories 1.1-1.8)
+- Removed 7 deprecated directories: `src/engine/`, `src/project/`, `src/utils/`, `src/config/`, `src/guards/`, `src/types/`, `src/integration/`
+- All imports updated to canonical paths (`kernel/`, `adapters/`)
+- `src/kernel/constants/paths.ts`: centralized path constants (12 constants)
+- `src/kernel/renderers/severity-icons.ts`: standardized severity emojis (GitHub convention)
+- `src/adapters/models/retry.ts`: rate limiting with exponential backoff
+- `src/kernel/discovery/renderers/`: types + barrel for extracted renderers
+- `src/kernel/utils/logger.ts`: enhanced logging abstraction
+- ARCHITECTURE.md converted to executive summary in `docs/architecture/system-architecture.md`
+- `.env.example` cleaned from 20 to 8 vars with documented code consumers
+
+#### Quality Infrastructure (Stories 2.1-2.9)
+- `eslint.config.js`: TypeScript ESLint flat configuration
+- `package.json`: added `lint` script
+- Fixed test runner timeout issues (Story 2.1)
+- Established ADR process and initial architecture decisions (Story 2.3)
+- Fixed documentation gaps across the project (Story 2.4)
+- Fixed silent fallback in adversarial-review-ai (Story 2.6)
+- Added rate limiting to AI adapters (Story 2.7)
+- Documented adversarial multi-agent system (Story 2.8)
+
+#### Test Coverage Expansion (Stories 3.1-3.4)
+- 400+ new tests across 25+ files
+- Discovery module tests (Story 3.1)
+- Stack adapter tests (Story 3.2)
+- Core adapter tests (Story 3.3)
+- Complexity hotspot refactoring (Story 3.4)
+
 ## [1.0.0] — 2026-07-08 — Quality Hardening & v1.0 Release
 
 **Epic 4 culminates in the v1.0.0 stable release.** All PREVIEW/EXPERIMENTAL commands graduate to STABLE. Every module has test coverage, zero security advisories, and documented performance baselines.
@@ -175,6 +207,7 @@
 - Basic spec-driven workflow enforcement
 - Claude Code integration via `/devflow` command
 
+[1.2.0]: https://github.com/tjsasakifln/devflow/releases/tag/v1.2.0
 [1.0.0]: https://github.com/tjsasakifln/devflow/releases/tag/v1.0.0
 [0.4.6]: https://github.com/tjsasakifln/devflow/releases/tag/v0.4.6
 [0.4.5]: https://github.com/tjsasakifln/devflow/releases/tag/v0.4.5

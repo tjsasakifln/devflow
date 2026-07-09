@@ -1,6 +1,6 @@
 import path from "node:path";
-import { inspectProject } from "../project/inspector.js";
-import { detectState } from "../engine/state-detector.js";
+import { inspectProject } from "../adapters/project/inspector.js";
+import { detectState } from "../kernel/state/detector.js";
 import { getQualityDebt } from "../kernel/tracking/bypass-detector.js";
 import pc from "picocolors";
 
@@ -111,7 +111,7 @@ export async function statusCommand(
   }
 
   // Review Mode indicator
-  const { ConfigManager } = await import("../config/index.js");
+  const { ConfigManager } = await import("../kernel/config/index.js");
   const configMgr = new ConfigManager(rootPath);
   const config = await configMgr.load();
   if (config.reviewMode === "solo-hardened") {

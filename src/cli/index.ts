@@ -129,7 +129,7 @@ export function registerCommands(program: Command): void {
     .option("--require-justification", "Require a 1-line justification for riskTolerance changes")
     .option("--justification <text>", "1-line justification for the config change")
     .action(async (key: string, value: string, options: { requireJustification?: boolean; justification?: string }) => {
-      const { ConfigManager } = await import("../config/index.js");
+      const { ConfigManager } = await import("../kernel/config/index.js");
       const mgr = new ConfigManager(process.cwd());
       const config = await mgr.load();
 

@@ -3,7 +3,7 @@ import { execSync } from "node:child_process";
 import {
   fileExists,
   safeReadFile,
-} from "../utils/fs.js";
+} from "../kernel/utils/fs.js";
 import {
   validateRequirements,
   validateRequirementsVariant,
@@ -144,7 +144,7 @@ export async function featureComplete(
   // Load risk tolerance for gate adjustment
   let riskTolerance: "relaxed" | "moderate" | "strict" = "moderate";
   try {
-    const { ConfigManager } = await import("../config/index.js");
+    const { ConfigManager } = await import("../kernel/config/index.js");
     const cfgMgr = new ConfigManager(rootPath);
     const cfg = await cfgMgr.load();
     riskTolerance = cfg.riskTolerance ?? "moderate";
@@ -206,7 +206,7 @@ export async function featureCompleteInternal(
   // Load risk tolerance
   let riskTolerance: "relaxed" | "moderate" | "strict" = "moderate";
   try {
-    const { ConfigManager } = await import("../config/index.js");
+    const { ConfigManager } = await import("../kernel/config/index.js");
     const cfgMgr = new ConfigManager(rootPath);
     const cfg = await cfgMgr.load();
     riskTolerance = cfg.riskTolerance ?? "moderate";
@@ -1010,8 +1010,8 @@ async function checkCI(checks: DoDCheck[], rootPath: string, _featureDir: string
     return;
   }
   try {
-    const { verifyCIStatus } = await import("../engine/ci-verifier.js");
-    const { ConfigManager } = await import("../config/index.js");
+    const { verifyCIStatus } = await import("../kernel/ci/verifier.js");
+    const { ConfigManager } = await import("../kernel/config/index.js");
     const configMgr = new ConfigManager(rootPath);
     const config = await configMgr.load();
 
@@ -1051,8 +1051,8 @@ async function checkCI(checks: DoDCheck[], rootPath: string, _featureDir: string
       });
     }
   } catch {
-    const { ConfigManager } = await import("../config/index.js");
-    const { isCIUnavailableBlocking } = await import("../engine/ci-verifier.js");
+    const { ConfigManager } = await import("../kernel/config/index.js");
+    const { isCIUnavailableBlocking } = await import("../kernel/ci/verifier.js");
     const configMgr2 = new ConfigManager(rootPath);
     const config2 = await configMgr2.load();
     const mode = config2.executionMode || "local";
@@ -1080,7 +1080,7 @@ async function checkOOQuality(checks: DoDCheck[], rootPath: string, applicableId
     return;
   }
   try {
-    const { ConfigManager } = await import("../config/index.js");
+    const { ConfigManager } = await import("../kernel/config/index.js");
     const configMgr = new ConfigManager(rootPath);
     const config = await configMgr.load();
 
@@ -1172,7 +1172,7 @@ async function checkImplementerSeparation(checks: DoDCheck[], featureDir: string
     return;
   }
   // Check review mode from config
-  const { ConfigManager } = await import("../config/index.js");
+  const { ConfigManager } = await import("../kernel/config/index.js");
   const configMgr = new ConfigManager(rootPath);
   const config = await configMgr.load();
   const reviewMode = config.reviewMode || "independent";
@@ -1591,7 +1591,7 @@ ${checks.map((c) => `| ${c.id} | ${c.description} | ${c.category} | ${c.passed ?
 **Result:** ${checks.filter((c) => c.blocking && !c.passed).length === 0 ? "All blocking checks passed" : "Blocking checks failed"}
 `;
 
-  const { atomicWrite } = await import("../utils/fs.js");
+  const { atomicWrite } = await import("../kernel/utils/fs.js");
   await atomicWrite(summaryPath, summary);
 
   console.log(pc.dim(`   Audit summary: ${summaryPath}`));

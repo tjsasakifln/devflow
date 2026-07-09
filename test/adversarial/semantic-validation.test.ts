@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { safeReadFile } from "../../src/utils/fs.js";
+import { safeReadFile } from "../../src/kernel/utils/fs.js";
 import {
   validateRequirementsSemantic,
   validateRoadmapSemantic,

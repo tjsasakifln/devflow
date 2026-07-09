@@ -9,6 +9,7 @@
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { fileExists, safeReadFile } from "../kernel/utils/fs.js";
+import { AUDITS_DIR, ADVERSARIAL_REVIEW_FILENAME, GATEKEEP_LOG_RELPATH } from "../kernel/constants/paths.js";
 import type { Evidence, EvidenceType } from "./report-model.js";
 
 // ── EvidenceCheck (consumer-facing interface) ──
@@ -186,10 +187,9 @@ export async function checkAdversarialReview(
 ): Promise<{ exists: boolean; verdict: string | null }> {
   const reviewPath = path.join(
     cwd,
-    ".devflow",
-    "audits",
+    AUDITS_DIR,
     featureId,
-    "adversarial-review.md",
+    ADVERSARIAL_REVIEW_FILENAME,
   );
   const exists = await fileExists(reviewPath);
   if (!exists) {
@@ -218,7 +218,7 @@ export async function checkGatekeepApproval(
   cwd: string,
   featureId: string,
 ): Promise<boolean> {
-  const gatekeepLogPath = path.join(cwd, ".devflow", "audits", "gatekeep-log.jsonl");
+  const gatekeepLogPath = path.join(cwd, GATEKEEP_LOG_RELPATH);
   const exists = await fileExists(gatekeepLogPath);
   if (!exists) return false;
 
@@ -418,8 +418,8 @@ async function gatherCIEvidence(
   };
 
   try {
-    const { verifyCIStatus } = await import("../engine/ci-verifier.js");
-    const { ConfigManager } = await import("../config/index.js");
+    const { verifyCIStatus } = await import("../kernel/ci/verifier.js");
+    const { ConfigManager } = await import("../kernel/config/index.js");
     const configMgr = new ConfigManager(cwd);
     const config = await configMgr.load();
 

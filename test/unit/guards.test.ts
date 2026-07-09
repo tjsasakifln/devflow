@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   checkPipelineReadiness,
   checkPreActionGuard,
-} from "../../src/guards/pipeline.js";
-import type { FeatureInfo } from "../../src/types/project.js";
-import type { PipelineContext } from "../../src/guards/pipeline.js";
+} from "../../src/kernel/guards/pipeline.js";
+import type { FeatureInfo } from "../../src/kernel/types/project.js";
+import type { PipelineContext } from "../../src/kernel/guards/pipeline.js";
 
 function makeFeature(overrides: Partial<FeatureInfo> = {}): FeatureInfo {
   return {

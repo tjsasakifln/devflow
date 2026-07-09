@@ -1,6 +1,6 @@
 import path from "node:path";
 import { execSync } from "node:child_process";
-import { fileExists, safeReadFile, atomicWrite } from "../utils/fs.js";
+import { fileExists, safeReadFile, atomicWrite } from "../kernel/utils/fs.js";
 import { getVersion } from "../kernel/utils/version.js";
 import { recordGatekeepSameActor } from "../kernel/tracking/bypass-detector.js";
 import { detectSoloDeveloper } from "../kernel/detection/solo.js";
@@ -67,7 +67,7 @@ export async function gatekeep(
   } catch { /* git not available */ }
 
   // ── Load config for review mode ──
-  const { ConfigManager } = await import("../config/index.js");
+  const { ConfigManager } = await import("../kernel/config/index.js");
   const configMgr = new ConfigManager(rootPath);
   const config = await configMgr.load();
   let mode = config.executionMode || "local";

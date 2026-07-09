@@ -1,5 +1,6 @@
 import path from "node:path";
 import { atomicWrite, safeReadFile, ensureDir } from "../utils/fs.js";
+import { BYPASS_LOG_RELPATH } from "../constants/paths.js";
 
 // ── Types ──
 
@@ -41,12 +42,10 @@ export interface BypassReport {
   warningMessage: string | null;
 }
 
-const BYPASS_LOG_FILE = ".devflow/audits/bypass-log.jsonl";
-
 // ── Helpers ──
 
 function getBypassLogPath(rootPath: string): string {
-  return path.join(rootPath, BYPASS_LOG_FILE);
+  return path.join(rootPath, BYPASS_LOG_RELPATH);
 }
 
 // ── Public API ──

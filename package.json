@@ -1,6 +1,6 @@
 {
   "name": "@tjsasakinpm/devflow",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Local AI coding governance CLI for Claude Code, Cursor and Copilot. Audit AI-generated changes before PR, enforce evidence, run adversarial review and generate PR risk reports.",
   "type": "module",
   "main": "./dist/main.js",
@@ -22,6 +22,7 @@
     "dev": "tsx src/main.ts",
     "start": "node dist/main.js",
     "test": "vitest run",
+    "lint": "eslint src/",
     "test:unit": "vitest run",
     "test:cli": "vitest run --config vitest.cli.config.ts",
     "test:watch": "vitest",

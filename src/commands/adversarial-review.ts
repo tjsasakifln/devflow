@@ -2,7 +2,7 @@ import path from "node:path";
 import { execSync } from "node:child_process";
 import * as readline from "node:readline/promises";
 import { stdin as processStdin, stdout as processStdout } from "node:process";
-import { atomicWrite } from "../utils/fs.js";
+import { atomicWrite } from "../kernel/utils/fs.js";
 import pc from "picocolors";
 import type { AdversarialVerificationResult } from "../kernel/orchestration/types.js";
 import {
@@ -77,7 +77,7 @@ export async function adversarialReview(
   // Load execution mode
   let mode = "local";
   try {
-    const { ConfigManager } = await import("../config/index.js");
+    const { ConfigManager } = await import("../kernel/config/index.js");
     const configMgr = new ConfigManager(rootPath);
     const config = await configMgr.load();
     mode = config.executionMode || "local";

@@ -6,6 +6,7 @@
  */
 
 import { getVersion } from "../kernel/utils/version.js"
+import { SEVERITY_ICONS } from "../kernel/renderers/severity-icons.js"
 import type {
   AuditReport,
   Severity,
@@ -41,19 +42,10 @@ export function verdictEmoji(verdict: Verdict): string {
  *   CRITICAL → 🔴
  *   HIGH     → 🟠
  *   MEDIUM   → 🟡
- *   LOW      → 🔵
+ *   LOW      → ⚪
  */
 export function severityEmoji(severity: Severity): string {
-  switch (severity) {
-    case "CRITICAL":
-      return "🔴"
-    case "HIGH":
-      return "🟠"
-    case "MEDIUM":
-      return "🟡"
-    case "LOW":
-      return "🔵"
-  }
+  return SEVERITY_ICONS[severity] ?? "⚪"
 }
 
 /**

@@ -1,0 +1,8 @@
+schema: 1
+story: '1.5'
+gate: PASS
+status_reason: 'All ACs met. paths.ts created at src/kernel/constants/paths.ts with BYPASS_LOG_RELPATH, FEATURES_DIR, AUDITS_DIR. 5 consumers updated (bypass-detector, evidence-engine, git adapter, audit-engine, trace). npm test and npm run build both pass. StackAdapters mapping correctly deemed N/A (static runtime objects, not config).'
+reviewer: 'Quinn (Guardian)'
+updated: '2026-07-09T02:50:00Z'
+top_issues: []
+waiver: { active: false }

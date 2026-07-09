@@ -1,11 +1,11 @@
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { ArtifactManager } from "../kernel/artifacts/manager.js";
-import { inspectProject } from "../project/inspector.js";
-import { detectState } from "../engine/state-detector.js";
-import { computeRecommendation } from "../engine/next-action.js";
+import { inspectProject } from "../adapters/project/inspector.js";
+import { detectState } from "../kernel/state/detector.js";
+import { computeRecommendation } from "../kernel/actions/recommender.js";
 import { generateCockpit } from "../kernel/cockpit/generator.js";
-import { fileExists, ensureDir } from "../utils/fs.js";
+import { fileExists, ensureDir } from "../kernel/utils/fs.js";
 import { getVersion } from "../kernel/utils/version.js";
 import { resolveInvocationCommand } from "../kernel/utils/cli-resolver.js";
 import { ensureDevflowCommand, readDevflowCommandPrefix } from "../adapters/integration/claude-commands.js";
