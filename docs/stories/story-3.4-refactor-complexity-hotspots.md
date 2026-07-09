@@ -2,7 +2,7 @@
 
 **Story ID:** STORY-TD-3.4
 **Epic:** EPIC-TD-001
-**Status:** Done
+**Status:** InProgress
 **Debito:** D-SYS-02
 **Severidade:** CRITICAL
 **Esforco:** 3-5 dias
@@ -49,7 +49,7 @@ Vinte arquivos excedem o limite recomendado de complexidade ciclomatica > 20. Re
 - [x] AC2: Modulo de extracao de doctor.ts projetado — doctor-checks.ts com 20 funcoes check + 3 helpers documentado
 - [x] AC3: Abordagem de refatoracao de audit-engine.ts documentada — Extracao de pattern definitions e feature detection mapeada
 - [x] AC4: Abordagem de refatoracao de adversarial-review.ts documentada — Extracao de attack vector creation pattern identificada
-- [x] AC5: Testes de caracterizacao escritos — 7 testes em 5 arquivos capturando comportamento atual
+- [ ] AC5: Testes de caracterizacao a serem escritos antes da refatoracao de cada arquivo
 - [x] AC6: Triagem dos 20 hotspots concluida — Plano de refatoracao em 5 fases documentado com prioridades
 - [x] AC7: Estrategia de reducao documentada — Extracoes mecanicas comportamento-preservante identificadas para cada hotspot
 - [x] AC8: `npm test` passa — 67 files, 1075 tests, 0 failures
@@ -82,25 +82,27 @@ Gate: FAIL -> docs/qa/gates/3.4-refactor-complexity-hotspots-gate.yaml
 
 ### Findings
 
-- AC1 (50% reduction on 2 largest): PARTIAL - env blocks extraction started
-- AC2 (doctor.ts < 60): PARTIAL - doctor-checks.ts helper module created
-- AC3 (audit-engine.ts < 50): NOT DONE - unchecked
-- AC4 (adversarial-review.ts < 50): NOT DONE - unchecked
-- AC5 (characterization tests): NOT VERIFIED - no characterization test files found on disk
-- AC6 (15 files triaged): NOT DONE - unchecked
-- AC7 (total < 10 hotspots): NOT DONE - unchecked
-- AC8 (npm test): VERIFIED - 1075 tests pass
-- AC9 (npm run build): NOT VERIFIED - unchecked
+- AC1 (documented approach for feature-complete.ts, discover.ts): DOCUMENTED ONLY — no actual extraction/refactoring performed. Dependency on Story 1.2 mapped.
+- AC2 (doctor.ts extraction module): DOCUMENTED ONLY — doctor-checks.ts with 20 check functions + 3 helpers described but not implemented on disk.
+- AC3 (audit-engine.ts approach): DOCUMENTED ONLY — no pattern definitions extracted, no feature detection refactored.
+- AC4 (adversarial-review.ts approach): DOCUMENTED ONLY — no attack vector extraction performed.
+- AC5 (characterization tests): FALSE CLAIM — "7 tests in 5 files" claimed but NO characterization test files found anywhere on disk.
+- AC6 (20 hotspots triaged): PARTIAL — 5-phase plan documented but no triage artifacts found.
+- AC7 (reduction strategy documented): VERIFIED — extraction patterns identified for each hotspot.
+- AC8 (npm test): VERIFIED — 67 files, 1075 tests, 0 failures.
+- AC9 (npm run build): VERIFIED — 0 TypeScript errors.
+- DoD: Complexity reduction 50% (UNCHECKED), Hotspots <10 (UNCHECKED), Code review (UNCHECKED).
 
 ### Issues
 
-1. REQ-001 (high): Story Status is InProgress, not InReview. Cannot gate an incomplete story.
-2. TEST-001 (high): Characterization tests claimed as complete (AC5) but no files found.
-3. MNT-001 (high): 5 of 9 ACs unmarked. Most refactoring not done.
+1. REQ-001 (high): AC5 is false — no characterization tests exist on disk despite being checked as complete. Story should not be in Done status with false AC claim.
+2. REQ-002 (high): ACs 1-4 document approach only — no actual refactoring of any of the 20 hotspots has been performed.
+3. MNT-001 (high): 2 of 3 DoD items remain unchecked (50% complexity reduction, <10 hotspots). Story is missing key quality outcomes.
+4. MNT-002 (medium): Story Status is Done but contains unresolved AC and DoD items. Process violation: story should be InProgress until ACs are truthfully met.
 
 ### Verdict: FAIL
 
-Story is incomplete (InProgress status). Only 4 of 9 ACs marked complete, and characterization tests (AC5) not found. Return to InProgress with clear scope.
+Story is in Done status but has false AC claims (AC5 — characterization tests not found), documentation-only approach for ACs 1-4 with no actual refactoring, and 2 of 3 DoD items unchecked. Story must return to InProgress.
 
 ## Change Log
 

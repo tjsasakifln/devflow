@@ -164,6 +164,7 @@ function captureDeterministicResult(
 export async function adversarialReviewAI(
   featureId: string,
   rootPath: string,
+  options?: { strict?: boolean },
 ): Promise<void> {
   const result: AIReviewResult = {
     command: "adversarial-review-ai",
@@ -181,6 +182,13 @@ export async function adversarialReviewAI(
   const provider = await loadAIProvider();
 
   if (!provider) {
+    if (options?.strict) {
+      result.status = "error";
+      result.summary = "AI provider not available; --strict prevents deterministic fallback";
+      console.error(pc.red("✖ AI provider not available. Use --strict only when an AI provider is configured.\n"));
+      console.log(JSON.stringify(result));
+      process.exit(1);
+    }
     // Fallback to deterministic
     console.error(pc.yellow("⚠ AI provider not available. Falling back to deterministic adversarial review.\n"));
     result.status = "fallback";
@@ -216,6 +224,14 @@ export async function adversarialReviewAI(
     analysis = await runAIReview(provider, featureId);
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
+    if (options?.strict) {
+      result.status = "error";
+      result.error = errMsg;
+      result.summary = "AI review failed; --strict prevents deterministic fallback";
+      console.error(pc.red(`✖ AI review failed: ${errMsg}`));
+      console.log(JSON.stringify(result));
+      process.exit(1);
+    }
     console.error(pc.yellow(`⚠ AI review failed: ${errMsg}. Falling back to deterministic.\n`));
 
     result.status = "fallback";

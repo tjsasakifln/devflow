@@ -464,8 +464,9 @@ export function registerCommands(program: Command): void {
   program
     .command("adversarial-review-ai <featureId>")
     .description("AI-powered adversarial review — complements deterministic review with LLM analysis (falls back to deterministic if no AI provider)")
-    .action(async (featureId: string) => {
-      await adversarialReviewAI(featureId, process.cwd());
+    .option("--strict", "Fail with error instead of falling back to deterministic review when AI is unavailable")
+    .action(async (featureId: string, opts: { strict?: boolean }) => {
+      await adversarialReviewAI(featureId, process.cwd(), { strict: opts.strict });
     });
 
   // ── Sanity Score ──

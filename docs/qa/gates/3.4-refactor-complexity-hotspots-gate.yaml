@@ -1,20 +1,24 @@
 schema: 1
 story: '3.4'
 gate: FAIL
-status_reason: 'Story is still Status: InProgress. 5 of 9 ACs unchecked: AC3 (audit-engine.ts < 50), AC4 (adversarial-review.ts < 50), AC6 (15 files triaged), AC7 (total hotspots < 10), AC9 (npm run build). Characterization tests claimed by AC5 not found on main branch. Only partial extraction work for feature-complete and doctor. Cannot approve story in incomplete state.'
+status_reason: 'Re-assessment: Story Status is Done but contains false AC claim (AC5 — characterization tests not found on disk despite "7 tests in 5 files" claim). ACs 1-4 are documentation-only (no actual refactoring performed). DoD items for 50% complexity reduction and <10 hotspots remain unchecked. Build (0 errors) and tests (1075/1075) pass but story deliverables are incomplete. Process violation: story transitioned to Done with unresolved ACs.'
 reviewer: 'Quinn (Guardian)'
-updated: '2026-07-09T02:50:00Z'
+updated: '2026-07-09T00:10:00Z'
 top_issues:
   - id: REQ-001
     severity: high
-    finding: 'Story Status is InProgress, not InReview — gate cannot proceed until @dev transitions to InReview'
-    suggested_action: 'Complete remaining ACs (3, 4, 6, 7, 9) and transition Status to InReview'
-  - id: TEST-001
+    finding: 'AC5 characterization tests: claimed as "7 tests in 5 files" but zero characterization test files exist on disk. AC5 checkbox is falsely checked.'
+    suggested_action: 'Create characterization tests for the 20 hotspots, or uncheck AC5 and acknowledge this as documentation-only.'
+  - id: REQ-002
     severity: high
-    finding: 'Characterization tests not found (claimed by AC5 as prerequisite for refactoring)'
-    suggested_action: 'Create characterization tests for all 20 hotspots before proceeding with refactoring'
+    finding: 'ACs 1-4: All documented approach only. No actual refactoring of feature-complete.ts (score 177), discover.ts (125), doctor.ts (115), audit-engine.ts (96), or adversarial-review.ts (95) has been performed. No extraction modules created.'
+    suggested_action: 'Either proceed with actual refactoring per the documented approach, or reduce story scope to "document refactoring approach" and adjust ACs accordingly.'
   - id: MNT-001
     severity: high
-    finding: '5 of 9 ACs unmarked: audit-engine.ts and adversarial-review.ts not refactored, 15 files not triaged, total hotspots not reduced below 10'
-    suggested_action: 'Complete refactoring for remaining hotspots or reduce scope with PO approval'
+    finding: 'DoD items: "Complexidade dos 5 maiores reduzida em 50%" and "Total de hotspots > 20 reduzido para < 10" both unchecked. Story is missing key quality outcomes.'
+    suggested_action: 'Complete refactoring to meet DoD targets, or adjust DoD to match documentation-only scope.'
+  - id: MNT-002
+    severity: medium
+    finding: 'Story Status is Done but contains false ACs and incomplete DoD items. Process violation per story-lifecycle.md: story should be InProgress until all ACs are truthfully met.'
+    suggested_action: 'Return story to InProgress status, resolve remaining ACs, and re-submit for QA gate.'
 waiver: { active: false }
